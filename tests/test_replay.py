@@ -46,6 +46,26 @@ def client():
     c.close()
 
 
+def test_a_finished_run_records_the_sampling_it_was_produced_under(client):
+    """Sending the temperature is not the same as recording it.
+
+    The test below asserts the provider puts temperature and seed on the wire,
+    and passed throughout while nothing wrote them into the run's metadata. It
+    was caught by running the suite at 0.7 and reading `temperature: None` back
+    out of the summary that run had just written - a provenance gap sitting
+    directly underneath a test that looked like it covered this.
+    """
+    provider = ScriptedProvider(list(SCRIPT))
+    provider.temperature = 0.7
+    provider.seed = 11
+    provider.num_ctx = 4096
+    suite = type("S", (), {"name": "support", "cases": [CASE]})()
+    meta = Runner(client=client, provider=provider, repeats=1).run_suite(suite).meta
+    assert meta["temperature"] == 0.7
+    assert meta["seed"] == 11
+    assert meta["num_ctx"] == 4096
+
+
 @pytest.fixture
 def recording(client, tmp_path):
     """A real run, recorded to an artifact, exactly as `proofbench run` writes it."""

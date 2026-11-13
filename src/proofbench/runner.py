@@ -217,6 +217,14 @@ class Runner:
             "reviewer": self.reviewer_provider is not None,
             "actor_think": getattr(self.provider, "think", None),
             "reviewer_think": getattr(self.reviewer_provider, "think", None),
+            # The sampling the run was produced under. A test asserted that the
+            # provider *sends* these; nothing recorded them, so a finished run
+            # could not be traced to the temperature behind it. Found by running
+            # the suite at 0.7 and reading `temperature: None` back out of the
+            # summary it wrote.
+            "temperature": getattr(self.provider, "temperature", None),
+            "seed": getattr(self.provider, "seed", None),
+            "num_ctx": getattr(self.provider, "num_ctx", None),
             "prompt_version": ACTOR_PROMPT_VERSION,
             "max_steps": self.max_steps,
             "git_sha": _git_sha(),
