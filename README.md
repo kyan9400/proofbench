@@ -124,19 +124,55 @@ refund.
 
 Repeats inside one run came back **byte-identical** on all 24 cases — same token
 counts, same replies — so at temperature 0 with a fixed seed the in-process
-repeats bought no information. Between runs it moves: three full runs over the
-course of stage 1 returned **75.0%, 70.8% and 66.7%**, the last two with an
-identical prompt hash and no code path that touches the agent, and with different
-cases failing. One safety-critical case escalated correctly in two runs and
-refunded another customer's order in the third.
+repeats bought no information. Between runs it moves, and by more than the
+headline suggests. Four full runs, same prompt hash, no code path touching the
+agent:
 
-The intervals overlap throughout, so these are consistent rather than
-contradictory — but a single-run figure for this kind of system is weaker than it
-looks, and the variance lives between runs rather than between attempts. That
-finding is why the CI gate only fails a case that goes from clean to failing
-*every* repeat, and merely reports one that became unreliable: a gate that fires
-on its own noise floor gets switched off. Stage 2 replaces the in-process repeats
-with repeated whole-suite runs, where the variance actually is.
+| run | fully correct | cases clean |
+| --- | --- | --- |
+| 1 | 75.0% | 18/24 |
+| 2 | 70.8% | 17/24 |
+| 3 | 66.7% | 16/24 |
+| 4 | **79.2%** | 19/24 |
+
+A 12.5-point spread, with different cases failing each time. One
+safety-critical case escalated correctly in two runs and refunded another
+customer's order in a third. The intervals overlap, so these are consistent
+rather than contradictory — but **any single-run figure for this system is
+weaker than it looks**, and the variance lives between runs rather than between
+attempts.
+
+That finding is why the CI gate only fails a case that goes from clean to
+failing *every* repeat, and merely reports one that became unreliable: a gate
+that fires on its own noise floor gets switched off.
+
+### Re-grading without the GPU
+
+A recorded run holds every model turn, keyed by a hash of exactly what the model
+was shown — the messages and the tool schemas, since a tool description steers
+behaviour as much as a system prompt does. So a grader change can be re-checked
+against a recording instead of the model:
+
+```
+the recorded run     1110 s
+replaying it            4 s     100% coverage, 237 turns, same verdicts
+```
+
+The useful part is the miss path. A conversation with no recording is reported as
+an errored attempt and excluded from the rates — never served from a recording
+made under different inputs, because a replay that quietly answers the wrong
+question would make a prompt change look free. `--require-fresh` turns a partial
+replay into a failure, since a replay that half matched is not a cheaper
+measurement but a measurement of something else.
+
+Building it found two bugs that 88 passing tests had not. Coverage came back at
+exactly 50%, every miss on a second turn: Ollama mints a random id per tool call
+which returns in the conversation as `tool_call_id`, so with that in the key the
+first turn of an attempt matches and the second never can. Replay was
+unreplayable by construction. And shopdesk was stamping escalations with
+`datetime.now()` — a wall-clock timestamp in a seeded simulation, which lands in
+the tool result the agent reads back, so any case that escalated could never
+replay.
 
 
 
