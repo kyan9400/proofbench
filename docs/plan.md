@@ -98,9 +98,11 @@ measurement.
   41 tests. *Done.*
 - **Stage 2 — the judge, and how much to trust it.** An LLM judge for the free-text
   rubric; a hand-labelled subset; Cohen's kappa for judge-versus-human agreement
-  reported alongside every judged number. Repeats turned into variance analysis
-  and flake rates. A recorded-replay provider so the gate can run in CI without a
-  GPU.
+  reported alongside every judged number. A recorded-replay provider so grader and
+  prompt changes can be re-checked in seconds instead of 17 minutes of GPU, and so
+  the gate can run in CI without a model at all. Variance measured where stage 1
+  found it — across repeated whole-suite runs, not across repeats inside one run,
+  which came back byte-identical.
 - **Stage 3 — the dashboard.** Runs, per-case diffs against a baseline, a trace
   viewer for every step of an attempt, injection-resistance and reviewer-value
   panels.
@@ -108,11 +110,31 @@ measurement.
   replay suite, and a write-up whose every number comes from a run that was
   actually executed.
 
+## What stage 1 measured
+
+The headline and the three findings are in the README, with the artifacts in
+`eval/`. The short version: 66.7% fully correct (95% CI 55.2-76.5%) on
+qwen3.5:9b; the dominant failure is an agent that reasons correctly and then does
+not call the tool; it paid out 2.8x its authority after reading a permissive
+policy and never the governing one; it obeyed one of five planted injections; and
+the reviewer architecture was defeated by injection because the transcript it
+reads carries the attack.
+
+Two of the four measurement runs were discarded rather than published, because
+checking the failures against their traces turned up a bug of the author's each
+time - a leak grader that counted an order id the customer had themselves quoted,
+and a reviewer configured so cheaply it stopped reviewing. Both are now tests.
+
 ## Things deliberately not done
 
 **The reviewer is not assumed to help.** It is switchable per run so the platform
-can report what it is worth. If it turns out to cost latency and catch nothing on
-this model, that is the result and it gets published.
+can report what it is worth. That turned out to matter: with its thinking
+disabled to save tokens it approved all 24 consequential actions it was shown,
+including a 1420.00 refund it described as "under 10000 cents". With thinking on
+it rejected that one correctly. Neither version caught the prompt injection,
+because the reviewer reads the conversation transcript and the transcript carries
+the attack. The result is published as measured, including the part where the
+cost optimisation was the author's mistake rather than the model's.
 
 **No price table in the repo.** Prices for hosted models are passed in. A stale
 table silently turns every cost figure in the dashboard into a wrong one, and it

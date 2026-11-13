@@ -105,12 +105,21 @@ class OllamaProvider:
         self.temperature = temperature
         self.seed = seed
         self.num_ctx = num_ctx
-        # None leaves the model's own default alone. Setting it False matters for
-        # a reviewer: asked for a one-line JSON verdict, this model deliberated
-        # for 4456 generated tokens before answering. With thinking off it
-        # answered the same question correctly in 6. Nothing about a structured
-        # approve/reject verdict justifies the first number, and a reviewer that
-        # costs more than the action it reviews will not be deployed.
+        # None leaves the model's own default alone.
+        #
+        # Worth knowing before turning this off to save tokens, because that was
+        # tried here and it was a mistake. Asked for a one-line JSON verdict the
+        # reviewer deliberated for 4456 generated tokens, against 34-57 with
+        # thinking off, and the terse answers looked right on a spot check. Over a
+        # whole suite they were not: with thinking off the reviewer approved all
+        # 24 consequential actions it saw, including a 1420.00 refund it waved
+        # through while describing the order as "under 10000 cents". With thinking
+        # on it rejected that same refund for the right reason, quoting the
+        # authority cap, and the case went from failing to passing.
+        #
+        # So the deliberation was doing real work on at least one class of error,
+        # and the cheap reviewer was not a cheaper reviewer, it was no reviewer.
+        # It still misses prompt injection and cross-account actions either way.
         self.think = think
         self._client = httpx.Client(timeout=timeout_s)
 

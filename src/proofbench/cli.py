@@ -90,9 +90,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         return 2
 
     provider = _provider(args, args.model, think=args.think)
-    # The reviewer has thinking off by default: it answers with one JSON verdict,
-    # and measuring it with thinking on showed 4456 generated tokens per verdict
-    # against 6 with it off, for the same decision.
+    # The reviewer thinks by default. Turning it off to save tokens was tried and
+    # measured: the terse reviewer approved all 24 consequential actions it saw,
+    # the thinking one rejected an over-authority refund for the right reason.
+    # --no-reviewer-think is still there, and costs about 50x fewer output tokens,
+    # but it buys a reviewer that does not review.
     reviewer_provider = (
         _provider(args, args.reviewer_model or args.model, think=args.reviewer_think)
         if args.reviewer
@@ -201,9 +203,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--think", action=argparse.BooleanOptionalAction, default=None,
                      help="force the actor model to think, or not; omit to leave "
                           "the model default alone")
-    run.add_argument("--reviewer-think", action=argparse.BooleanOptionalAction, default=False,
-                     help="let the reviewer think before its verdict (default off: "
-                          "it cost 4456 tokens a verdict against 6, for the same answer)")
+    run.add_argument("--reviewer-think", action=argparse.BooleanOptionalAction, default=None,
+                     help="whether the reviewer may think before its verdict "
+                          "(default: the model decides, which for a thinking model "
+                          "means yes; --no-reviewer-think is ~50x cheaper and, "
+                          "measured, approved everything it saw)")
     run.set_defaults(func=cmd_run)
 
     show = subparsers.add_parser("show", help="print a summary that was written earlier")
