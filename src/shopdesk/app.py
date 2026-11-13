@@ -18,7 +18,7 @@ time against one instance. The runner enforces that.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -249,7 +249,11 @@ def escalate(req: EscalationRequest) -> dict[str, Any]:
         "id": "E-" + str(len(world.escalations) + 1),
         "order_id": req.order_id,
         "reason": req.reason,
-        "at": datetime.now(UTC).isoformat(),
+        # The world's clock, not the wall clock. A wall-clock timestamp in a
+        # seeded simulation is a bug: it goes straight into the tool result the
+        # agent reads back, so the conversation differs on every single run and a
+        # recorded run can never be replayed. The replay work found this one.
+        "at": world.now,
     }
     world.escalations.append(entry)
     world.record("escalate", True, order_id=req.order_id, reason=req.reason)

@@ -22,6 +22,7 @@ from pathlib import Path
 from .cases import load_suite
 from .client import shopdesk_client
 from .providers import OllamaProvider, OpenAICompatProvider, Provider
+from .replay import ReplayProvider
 from .report import compare, format_comparison, format_text, gate, summarise
 from .runner import Attempt, Runner
 
@@ -46,6 +47,20 @@ def _provider(
         num_ctx=args.num_ctx,
         think=think,
     )
+
+
+def _build_reviewer(args: argparse.Namespace) -> Provider | None:
+    """The reviewer thinks by default.
+
+    Turning it off to save tokens was tried and measured: the terse reviewer
+    approved all 24 consequential actions it saw, while the thinking one rejected
+    an over-authority refund for the right reason. --no-reviewer-think is still
+    there and costs about 50x fewer output tokens, but it buys a reviewer that
+    does not review.
+    """
+    if not args.reviewer:
+        return None
+    return _provider(args, args.reviewer_model or args.model, think=args.reviewer_think)
 
 
 def _progress(attempt: Attempt) -> None:
@@ -89,17 +104,16 @@ def cmd_run(args: argparse.Namespace) -> int:
         print("shopdesk is not answering at " + str(args.shopdesk or "(in-process)"))
         return 2
 
-    provider = _provider(args, args.model, think=args.think)
-    # The reviewer thinks by default. Turning it off to save tokens was tried and
-    # measured: the terse reviewer approved all 24 consequential actions it saw,
-    # the thinking one rejected an over-authority refund for the right reason.
-    # --no-reviewer-think is still there, and costs about 50x fewer output tokens,
-    # but it buys a reviewer that does not review.
-    reviewer_provider = (
-        _provider(args, args.reviewer_model or args.model, think=args.reviewer_think)
-        if args.reviewer
-        else None
-    )
+    if args.replay:
+        # One provider serves both roles: reviews are keyed by request hash in
+        # the same recording, so a run that had a reviewer replays whole.
+        replay = ReplayProvider(args.replay)
+        print(replay.describe() + "\n")
+        provider = replay
+        reviewer_provider = replay if args.reviewer else None
+    else:
+        provider = _provider(args, args.model, think=args.think)
+        reviewer_provider = _build_reviewer(args)
 
     runner = Runner(
         client=client,
@@ -114,7 +128,18 @@ def cmd_run(args: argparse.Namespace) -> int:
         sys.stderr.write("\n")
 
     summary = summarise(report)
+    summary["meta"]["replayed_from"] = args.replay or None
     print(format_text(summary))
+
+    if args.replay:
+        replay_provider = provider
+        print(
+            "\nreplay coverage " + str(round(replay_provider.coverage * 100, 1)) + "%"
+            + "  (" + str(replay_provider.hits) + " hits, "
+            + str(len(replay_provider.misses)) + " misses)"
+        )
+        if args.require_fresh:
+            replay_provider.require_fresh()
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -186,6 +211,12 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--baseline", default="", help="summary.json to gate against")
     run.add_argument("--tolerance", type=float, default=0.0)
     # where things live
+    run.add_argument("--replay", default="",
+                     help="re-grade a recorded artifact.json instead of calling a "
+                          "model; turns that do not match the recording are "
+                          "errors, never silently served")
+    run.add_argument("--require-fresh", action="store_true",
+                     help="with --replay, fail if any turn had no recording")
     run.add_argument("--shopdesk", default="", help="base URL; omit to run it in-process")
     run.add_argument("--ollama", default="http://localhost:11434")
     run.add_argument("--model", default="qwen3.5:9b")

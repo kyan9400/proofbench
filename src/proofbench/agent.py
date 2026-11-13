@@ -68,6 +68,54 @@ def _hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
+def _without_volatile_ids(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop the provider's per-call correlation ids from a conversation.
+
+    Ollama returns a fresh random id on every tool call - `call_r5wv1q2f` - which
+    goes back in the conversation as `tool_call_id`. Hashing it makes every
+    recording unreplayable by construction: the first turn matches, the second
+    never can, because the id was invented at record time and cannot recur.
+    Found exactly that way, at 50% replay coverage with the misses all on second
+    turns.
+
+    These ids correlate a result with its call and carry no meaning the model
+    acts on, so they are not part of what identifies a turn. Everything that does
+    change behaviour - roles, content, tool names, arguments, results - stays in.
+    """
+    cleaned: list[dict[str, Any]] = []
+    for message in messages:
+        copy = {k: v for k, v in message.items() if k != "tool_call_id"}
+        calls = copy.get("tool_calls")
+        if calls:
+            copy["tool_calls"] = [
+                {
+                    "function": {
+                        "name": (call.get("function") or {}).get("name"),
+                        "arguments": (call.get("function") or {}).get("arguments"),
+                    }
+                }
+                for call in calls
+            ]
+        cleaned.append(copy)
+    return cleaned
+
+
+def request_hash(messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> str:
+    """Identify a model turn by exactly what the model was shown.
+
+    Both the conversation and the tool schemas go in. A replay keyed only on the
+    conversation would happily serve a recording made when the tools had
+    different descriptions, and tool descriptions change behaviour as much as the
+    system prompt does.
+    """
+    canonical = json.dumps(
+        {"messages": _without_volatile_ids(messages), "tools": tools},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
 ACTOR_PROMPT_VERSION = _hash(ACTOR_SYSTEM_PROMPT)
 REVIEWER_PROMPT_VERSION = _hash(REVIEWER_SYSTEM_PROMPT)
 
@@ -94,6 +142,12 @@ class Step:
     decision: str | None = None
     reason: str | None = None
     error: str | None = None
+    # A hash of the exact messages that produced this model turn. It is what lets
+    # a recorded run be replayed: the replay provider matches on the conversation
+    # it is handed, so a changed prompt or a changed tool schema misses the
+    # recording and is reported as stale instead of being quietly replayed
+    # against inputs that no longer exist.
+    request_hash: str | None = None
 
 
 @dataclass
@@ -172,6 +226,7 @@ class Reviewer:
     def __init__(self, provider: Provider, policy_text: str) -> None:
         self.provider = provider
         self.policy_text = policy_text
+        self.last_request_hash: str | None = None
 
     def review(
         self, conversation: list[dict[str, Any]], call: ToolCall
@@ -189,6 +244,7 @@ class Reviewer:
                 ),
             },
         ]
+        self.last_request_hash = request_hash(messages, [])
         completion = self.provider.complete(messages, [])
         if completion.error:
             # A reviewer that cannot be reached must not become a rubber stamp,
@@ -255,12 +311,14 @@ class Agent:
         index = 0
 
         for _ in range(self.max_steps):
+            turn_hash = request_hash(messages, tool_schemas)
             completion = self.provider.complete(messages, tool_schemas)
             index += 1
             run.steps.append(
                 Step(
                     index=index,
                     kind="model",
+                    request_hash=turn_hash,
                     text=completion.text,
                     tool_calls=[
                         {
@@ -323,6 +381,7 @@ class Agent:
                             arguments=call.arguments,
                             decision=decision,
                             reason=reason,
+                            request_hash=self.reviewer.last_request_hash,
                             prompt_tokens=review_completion.prompt_tokens,
                             completion_tokens=review_completion.completion_tokens,
                             latency_ms=review_completion.latency_ms,

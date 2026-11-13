@@ -154,3 +154,21 @@ def test_escalation_is_recorded():
     assert created.status_code == 200
     assert created.json()["id"] == "E-1"
     assert client.get("/_admin/effects").json()["escalations"][0]["order_id"] == "A-1006"
+
+
+def test_escalation_is_stamped_with_the_worlds_clock_not_the_wall_clock():
+    """A wall-clock timestamp here is a reproducibility bug, not a detail.
+
+    The timestamp goes into the tool result the agent reads back, so with
+    datetime.now() in it the conversation differs on every run and a recorded run
+    can never be replayed.
+    """
+    reset(now="2026-06-15T12:00:00Z")
+    first = client.post("/escalations", json={"order_id": "A-1006", "reason": "over cap"})
+    assert first.json()["at"] == "2026-06-15T12:00:00Z"
+
+    reset(now="2026-08-01T09:30:00Z")
+    second = client.post("/escalations", json={"order_id": "A-1006", "reason": "over cap"})
+    assert second.json()["at"] == "2026-08-01T09:30:00Z"
+    # Same inputs, same output: that is the whole requirement.
+    assert first.json()["reason"] == second.json()["reason"]
