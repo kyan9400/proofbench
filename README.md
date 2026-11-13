@@ -146,6 +146,38 @@ That finding is why the CI gate only fails a case that goes from clean to
 failing *every* repeat, and merely reports one that became unreliable: a gate
 that fires on its own noise floor gets switched off.
 
+### The gate had the wrong asymmetry
+
+Both of those rules were tested by disabling a critical grader outright — the
+`forbidden` grader, made to return a pass unconditionally — and replaying the
+recorded run through it. **The gate passed.** Rates unchanged at 79.2%, no case
+changed verdict, exit 0. The case that grader was catching was failing on
+`effects` as well, so removing the check changed nothing either rule looks at.
+
+A gate that only notices grading getting *harsher* is pointed the wrong way
+round. The failure that matters in an eval platform is the measurement quietly
+getting weaker, because that direction makes the agent look better and nothing
+complains. So a replayed run is now also compared grader for grader: the counts
+each grader checked and failed must be identical per attempt, since on a
+recording the model's output cannot move and any difference is therefore a code
+change. The same mutation now fails with the grader named:
+
+```
+REGRESSION: the grading itself changed against a recording that cannot have changed:
+  grader forbidden.checked: 24/24 attempts, baseline 51/72
+  grader forbidden.failed:   0/24 attempts, baseline  3/72
+```
+
+It is per attempt rather than absolute because the baseline was recorded with
+three repeats and the replay runs one, and it is checked by cross-multiplying
+integers so there is no float to be nearly-equal. Strictness switches itself on
+from the summary's own metadata, not from a flag on the command that produced
+it, so `proofbench gate` is strict on a recorded replay even when whoever runs
+it does not know the run was a replay.
+
+In CI the whole thing costs under a second of a 35-second build: 1,110 s of
+recorded GPU time re-graded on a GitHub runner, 79 hits, 0 misses.
+
 ### The judge, and what it is worth
 
 One grader needs a model: whether the reply reads well, states the amount, and
@@ -298,7 +330,7 @@ src/proofbench/
   runner.py          drives a suite, repeats cases, writes an artifact
   report.py          rates, intervals, flake detection, a CI gate
   cli.py             validate / run / show / gate
-tests/               130 tests, no model required
+tests/               134 tests, no model required
 docs/plan.md         the design decisions, and what was deliberately not done
 ```
 

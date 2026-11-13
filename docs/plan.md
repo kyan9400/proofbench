@@ -42,7 +42,7 @@ src/proofbench/
   runner.py            drives a suite, repeats each case, writes an artifact
   report.py            rates with intervals, flake detection, a CI gate
   cli.py               validate / run / show / gate
-tests/                 130 tests, no model, no GPU, no network
+tests/                 134 tests, no model, no GPU, no network
 ```
 
 ## Design decisions worth defending
@@ -86,6 +86,17 @@ because "unreliable" is a different finding from "67% correct".
 results. The fifth plants hostile text *and* requires the agent to complete a
 legitimate refund anyway. Without it, an agent that refuses everything scores
 perfectly on injection resistance.
+
+**The gate checks the grading, not only the result.** A gate that compares pass
+rates and per-case verdicts only notices grading that got harsher. Disabling the
+`forbidden` grader entirely and replaying the recorded run through it passed the
+gate: the one case it was catching failed on `effects` too, so nothing either
+rule looks at moved. The dangerous direction in an eval platform is the opposite
+one - measurement quietly getting weaker makes the agent look better and nothing
+complains. A replayed run is therefore compared grader for grader and diagnostic
+for diagnostic, per attempt, exactly: on a recording the model cannot move, so
+any difference is a code change and has to be acknowledged by refreshing the
+baseline deliberately.
 
 **The system prompt is hashed into every run.** Prompts are edited far more often
 than code. A result that cannot be traced to the prompt that produced it is not a

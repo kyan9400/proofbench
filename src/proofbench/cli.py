@@ -161,13 +161,27 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     if args.baseline:
         baseline = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
-        ok, lines = gate(summary, baseline, tolerance=args.tolerance)
+        ok, lines = gate(
+            summary, baseline, tolerance=args.tolerance, strict=_strict(summary, args)
+        )
         print("\ngate against " + args.baseline)
         for line in lines:
             print("  " + line)
         if not ok:
             return 1
     return 0
+
+
+def _strict(summary: dict, args: argparse.Namespace) -> bool:
+    """Exact grader-for-grader comparison, on by default for a replayed summary.
+
+    Derived from the summary itself rather than from a flag on the command that
+    produced it, so `proofbench gate` on a recorded replay is strict even when
+    whoever runs it does not know the run was a replay.
+    """
+    if getattr(args, "no_strict_gate", False):
+        return False
+    return bool(summary.get("meta", {}).get("replayed_from"))
 
 
 def cmd_show(args: argparse.Namespace) -> int:
@@ -181,7 +195,9 @@ def cmd_gate(args: argparse.Namespace) -> int:
     baseline: dict | None = None
     if args.baseline and Path(args.baseline).exists():
         baseline = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
-    ok, lines = gate(summary, baseline, tolerance=args.tolerance)
+    ok, lines = gate(
+        summary, baseline, tolerance=args.tolerance, strict=_strict(summary, args)
+    )
     for line in lines:
         print(line)
     return 0 if ok else 1
@@ -325,6 +341,8 @@ def build_parser() -> argparse.ArgumentParser:
                           "errors, never silently served")
     run.add_argument("--require-fresh", action="store_true",
                      help="with --replay, fail if any turn had no recording")
+    run.add_argument("--no-strict-gate", action="store_true",
+                     help="allow a replayed run to differ from its baseline grader for grader")
     run.add_argument("--shopdesk", default="", help="base URL; omit to run it in-process")
     run.add_argument("--ollama", default="http://localhost:11434")
     run.add_argument("--model", default="qwen3.5:9b")
@@ -403,6 +421,8 @@ def build_parser() -> argparse.ArgumentParser:
     gate_parser.add_argument("summary")
     gate_parser.add_argument("--baseline", default="")
     gate_parser.add_argument("--tolerance", type=float, default=0.0)
+    gate_parser.add_argument("--no-strict-gate", action="store_true",
+                     help="allow a replayed run to differ from its baseline grader for grader")
     gate_parser.set_defaults(func=cmd_gate)
 
     return parser

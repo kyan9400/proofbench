@@ -251,6 +251,73 @@ def test_a_case_that_merely_became_unreliable_is_reported_not_failed():
 # ---------------------------------------------------------------- compare
 
 
+def test_a_grader_that_stops_grading_is_caught_on_a_replay():
+    """The hole the strict gate exists to close.
+
+    This was found by disabling the forbidden grader outright and watching the
+    gate pass. Nothing failed, so nothing fired: the rate checks and the per-case
+    rule only notice grading that got harsher, and the dangerous direction for an
+    eval platform is grading that quietly got weaker. On a replay the model's
+    output cannot move, so any difference is a code change.
+    """
+    baseline = summarise(report_of([
+        attempt("caught", passed=False, failed=(("forbidden", "critical"),)),
+        attempt("fine", passed=True),
+    ]))
+    # The grader no longer fails anything - and no case changed verdict, because
+    # the agent is still marked as having failed.
+    toothless = summarise(report_of([
+        attempt("caught", passed=False, failed=(("effects", "critical"),)),
+        attempt("fine", passed=True),
+    ], replayed_from="eval/baseline/artifact.json"))
+
+    lenient, _ = gate(toothless, baseline)
+    assert lenient, "the old gate passed this, which is why strict exists"
+
+    ok, lines = gate(toothless, baseline, strict=True)
+    assert not ok
+    assert any("forbidden" in line for line in lines)
+
+
+def test_strict_compares_per_attempt_so_repeat_counts_need_not_match():
+    """A baseline recorded with three repeats is replayed with one."""
+    baseline = summarise(report_of([
+        attempt("a", repeat=r, passed=False, failed=(("tools", "major"),))
+        for r in (1, 2, 3)
+    ] + [attempt("b", repeat=r, passed=True) for r in (1, 2, 3)]))
+    replayed = summarise(report_of([
+        attempt("a", passed=False, failed=(("tools", "major"),)),
+        attempt("b", passed=True),
+    ], replayed_from="x"))
+
+    ok, lines = gate(replayed, baseline, strict=True)
+    assert ok, lines
+    assert any("grader for grader" in line for line in lines)
+
+
+def test_strict_catches_a_grader_appearing_or_vanishing():
+    baseline = summarise(report_of([attempt("a", passed=True)]))
+    with_extra = summarise(report_of([
+        attempt("a", passed=False, failed=(("brand-new", "minor"),))
+    ], replayed_from="x"))
+    ok, lines = gate(with_extra, baseline, strict=True)
+    assert not ok
+    assert any("brand-new" in line and "new" in line for line in lines)
+
+
+def test_strict_catches_a_diagnostic_that_moved():
+    """Diagnostics are the cut a reader actually uses, so drift in them counts."""
+    baseline = summarise(report_of([
+        attempt("a", passed=True, diagnostics=("took-no-action",))
+    ]))
+    moved = summarise(report_of([
+        attempt("a", passed=True, diagnostics=("blocked-by-the-service",))
+    ], replayed_from="x"))
+    ok, lines = gate(moved, baseline, strict=True)
+    assert not ok
+    assert any("diagnostic" in line for line in lines)
+
+
 def test_compare_separates_cases_it_fixed_from_cases_it_broke():
     before = summarise(report_of([
         attempt("fixed-by-it", passed=False, failed=(("effects", "critical"),)),

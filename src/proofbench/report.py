@@ -345,7 +345,46 @@ def format_comparison(
     return "\n".join(lines)
 
 
-def gate(summary: dict[str, Any], baseline: dict[str, Any] | None, tolerance: float = 0.0):
+def _per_attempt_mismatches(
+    now: dict[str, Any], before: dict[str, Any], now_n: int, before_n: int, label: str
+) -> list[str]:
+    """Counts that should be identical per attempt, compared exactly.
+
+    A replay is deterministic, so any difference in what the graders checked or
+    failed is a change in the grading rather than noise. The comparison is per
+    attempt because a baseline recorded with three repeats is compared against a
+    replay of one, and it is done by cross-multiplying integers rather than
+    dividing, so there is no float to be nearly-equal.
+    """
+    out: list[str] = []
+    if not now_n or not before_n:
+        return out
+    for key in sorted(set(now) | set(before)):
+        if key not in before:
+            out.append(label + " " + key + " is new; the baseline predates it")
+            continue
+        if key not in now:
+            out.append(label + " " + key + " has disappeared since the baseline")
+            continue
+        a, b = now[key], before[key]
+        for field in ("checked", "failed"):
+            if field not in a or field not in b:
+                continue
+            if a[field] * before_n != b[field] * now_n:
+                out.append(
+                    label + " " + key + "." + field + ": " + str(a[field]) + "/"
+                    + str(now_n) + " attempts, baseline " + str(b[field]) + "/"
+                    + str(before_n)
+                )
+    return out
+
+
+def gate(
+    summary: dict[str, Any],
+    baseline: dict[str, Any] | None,
+    tolerance: float = 0.0,
+    strict: bool = False,
+):
     """Compare a summary with a baseline. Stage 2 wires this into CI.
 
     Returns (ok, lines). The comparison is against the baseline's lower
@@ -360,6 +399,15 @@ def gate(summary: dict[str, Any], baseline: dict[str, Any] | None, tolerance: fl
     is only failed here when it goes from clean to failing *every* repeat. One
     that becomes unreliable is reported as newly flaky and does not fail the
     build, because a gate that fires on its own noise gets switched off.
+
+    `strict` additionally requires the per-grader and diagnostic counts to be
+    identical per attempt, and exists because the two rules above were tested by
+    disabling a critical grader outright and the gate passed. Nothing failed, so
+    nothing fired: the rates and the per-case rule only notice grading that got
+    *harsher*, while the dangerous direction for an eval platform is grading that
+    quietly got weaker. On a replay, where the model's output cannot move, any
+    difference at all is a code change and should have to be acknowledged by
+    refreshing the baseline on purpose.
     """
     lines: list[str] = []
     if baseline is None:
@@ -399,4 +447,24 @@ def gate(summary: dict[str, Any], baseline: dict[str, Any] | None, tolerance: fl
     if newly_flaky:
         lines.append("newly flaky (reported, does not fail the build): "
                      + ", ".join(sorted(newly_flaky)))
+
+    if strict:
+        now_n = summary.get("totals", {}).get("attempts") or 0
+        before_n = baseline.get("totals", {}).get("attempts") or 0
+        drift = _per_attempt_mismatches(
+            summary.get("per_grader", {}), baseline.get("per_grader", {}),
+            now_n, before_n, "grader",
+        )
+        diag_now = {k: {"failed": v} for k, v in summary.get("diagnostics", {}).items()}
+        diag_was = {k: {"failed": v} for k, v in baseline.get("diagnostics", {}).items()}
+        drift += _per_attempt_mismatches(
+            diag_now, diag_was, now_n, before_n, "diagnostic"
+        )
+        if drift:
+            ok = False
+            lines.append("REGRESSION: the grading itself changed against a recording "
+                         "that cannot have changed:")
+            lines.extend("  " + line for line in drift)
+        else:
+            lines.append("grading identical to the baseline, grader for grader")
     return ok, lines
