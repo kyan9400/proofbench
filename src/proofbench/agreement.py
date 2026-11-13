@@ -28,7 +28,8 @@ bare would be the same mistake the rest of this project is built to avoid.
 from __future__ import annotations
 
 import math
-from typing import Any, Literal, Sequence
+from collections.abc import Sequence
+from typing import Any, Literal
 
 import numpy as np
 
@@ -55,7 +56,7 @@ def cohen_kappa(human: Sequence[Label], judge: Sequence[Label]) -> float | None:
         return None
 
     classes = ("pass", "fail")
-    observed = sum(1 for a, b in zip(human, judge) if a == b) / n
+    observed = sum(1 for a, b in zip(human, judge, strict=True) if a == b) / n
     expected = sum(
         (human.count(c) / n) * (judge.count(c) / n) for c in classes
     )
@@ -65,10 +66,10 @@ def cohen_kappa(human: Sequence[Label], judge: Sequence[Label]) -> float | None:
 
 
 def _confusion(human: Sequence[Label], judge: Sequence[Label]) -> dict[str, int]:
-    tp = sum(1 for h, j in zip(human, judge) if h == POSITIVE and j == POSITIVE)
-    fp = sum(1 for h, j in zip(human, judge) if h != POSITIVE and j == POSITIVE)
-    fn = sum(1 for h, j in zip(human, judge) if h == POSITIVE and j != POSITIVE)
-    tn = sum(1 for h, j in zip(human, judge) if h != POSITIVE and j != POSITIVE)
+    tp = sum(1 for h, j in zip(human, judge, strict=True) if h == POSITIVE and j == POSITIVE)
+    fp = sum(1 for h, j in zip(human, judge, strict=True) if h != POSITIVE and j == POSITIVE)
+    fn = sum(1 for h, j in zip(human, judge, strict=True) if h == POSITIVE and j != POSITIVE)
+    tn = sum(1 for h, j in zip(human, judge, strict=True) if h != POSITIVE and j != POSITIVE)
     return {"tp": tp, "fp": fp, "fn": fn, "tn": tn}
 
 
@@ -77,12 +78,24 @@ def bootstrap_kappa(
     judge: Sequence[Label],
     draws: int = 5000,
     seed: int = 7,
-) -> tuple[float, float] | None:
+) -> tuple[float, float, float] | None:
     """A percentile interval for kappa, by resampling the labelled items.
 
-    Resamples that land on a single class give an undefined kappa and are
-    dropped; if most of them do, the interval itself is not reportable and this
-    returns None rather than an interval computed from whatever survived.
+    Returns (low, high, undefined_share). The third number is not decoration: a
+    resample that lands on a single class has no kappa and is dropped, and with
+    only one or two disagreements a large share of draws drop out. That share has
+    to travel with the interval, because without it the interval looks like
+    evidence it is not.
+
+    A degenerate case shows why. One real failure, a judge that calls everything
+    a pass: every resample that keeps the failure gives kappa exactly 0, and
+    every resample that loses it is undefined. The interval comes back (0.0, 0.0)
+    - zero width, which reads as enormous confidence - while a third of the draws
+    said nothing at all. The share is what stops that being published as
+    precision.
+
+    None is returned only when most draws were undefined, where no interval
+    computed from the survivors would mean anything.
     """
     n = len(human)
     if n == 0:
@@ -96,12 +109,32 @@ def bootstrap_kappa(
         value = cohen_kappa(resampled_human, resampled_judge)
         if value is not None:
             values.append(value)
+    undefined_share = 1 - (len(values) / draws)
     if len(values) < draws * 0.5:
         return None
     return (
         float(np.percentile(values, 2.5)),
         float(np.percentile(values, 97.5)),
+        undefined_share,
     )
+
+
+def disagreement_upper_bound(n: int, confidence: float = 0.95) -> float | None:
+    """With no disagreements at all, the largest true disagreement rate still
+    consistent with what was seen.
+
+    This is the number that matters when a judge agrees with a person on every
+    item. A bootstrap cannot express uncertainty there - every resample of a
+    perfect set is perfect, so the interval comes back zero-width and reads as
+    certainty. The exact one-sided bound says the useful thing instead: nought
+    disagreements in 21 replies is consistent with a true disagreement rate as
+    high as 13%.
+
+    Clopper-Pearson, which for zero events reduces to 1 - alpha^(1/n).
+    """
+    if n <= 0:
+        return None
+    return 1 - (1 - confidence) ** (1 / n)
 
 
 def agreement(
@@ -114,7 +147,7 @@ def agreement(
     human = list(human)
     judge = list(judge)
 
-    observed = (sum(1 for a, b in zip(human, judge) if a == b) / n) if n else 0.0
+    observed = (sum(1 for a, b in zip(human, judge, strict=True) if a == b) / n) if n else 0.0
     kappa = cohen_kappa(human, judge)
     confusion = _confusion(human, judge)
 
@@ -133,8 +166,15 @@ def agreement(
         "judge_precision_on_failures": precision,
         "judge_recall_on_failures": recall,
         "disagreements": [
-            i for i, (h, j) in enumerate(zip(human, judge)) if h != j
+            i for i, (h, j) in enumerate(zip(human, judge, strict=True)) if h != j
         ],
+        # Only meaningful when nothing disagreed, which is exactly the case the
+        # bootstrap cannot describe.
+        "max_disagreement_rate_if_none_seen": (
+            disagreement_upper_bound(n)
+            if n and not any(h != j for h, j in zip(human, judge, strict=True))
+            else None
+        ),
     }
 
 
@@ -169,10 +209,33 @@ def interpret(result: dict[str, Any]) -> str:
     if interval is None:
         return text + "; the interval is not reportable at this sample size"
 
-    low, high = interval
+    low, high, undefined_share = interval
     text += "; 95% " + str(round(low, 3)) + " to " + str(round(high, 3))
-    if low < 0.21 < high or (high - low) > 0.5:
+
+    # A zero-width interval here means the resamples were degenerate, not that
+    # the estimate is precise, and it must never read as the second thing. When
+    # the cause is perfect agreement there is a better number to give.
+    bound = result.get("max_disagreement_rate_if_none_seen")
+    if math.isclose(low, high) and bound is not None:
+        text += (
+            " - but nothing disagreed, so the interval is zero-width by "
+            "construction and says nothing. Nought disagreements in " + str(n)
+            + " replies is consistent with a true disagreement rate as high as "
+            + str(round(bound * 100, 1)) + "%"
+        )
+    elif math.isclose(low, high):
+        text += (
+            " - zero width because every usable resample gave the same value, "
+            "which is a degenerate set rather than a precise estimate"
+        )
+    elif low < 0.21 < high or (high - low) > 0.5:
         text += " - wide enough that the band is not worth leaning on"
+
+    if undefined_share > 0.1:
+        text += (
+            "; " + str(round(undefined_share * 100)) + "% of resamples had no kappa "
+            "at all, so there is less here than the interval suggests"
+        )
     return text
 
 

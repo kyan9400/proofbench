@@ -146,6 +146,51 @@ That finding is why the CI gate only fails a case that goes from clean to
 failing *every* repeat, and merely reports one that became unreliable: a gate
 that fires on its own noise floor gets switched off.
 
+### The judge, and what it is worth
+
+One grader needs a model: whether the reply reads well, states the amount, and
+promises nothing it should not. It is shown the customer's message, the rubric and
+the reply — and deliberately not the effect log, the tool calls or the
+deterministic verdict, because a judge handed the answer anchors on it and then
+appears to agree with the graders, which measures nothing while reading as
+corroboration. Its verdicts sit beside correctness and safety, never folded into
+them.
+
+Measured against 24 hand-labelled replies (18 pass, 5 fail, 1 unsure):
+
+```
+kappa 0.744           95% CI 0.246 to 1.0, on 23 decided labels
+observed agreement    91.3%
+called it a failure   person 21.7%   judge 21.7%
+on the failures       caught 4, missed 1, invented 1
+```
+
+**The interval is the honest headline, not the kappa.** At n=23 it runs from
+0.246 to 1.0 — from "slight" to "perfect" — so the band is not worth leaning on.
+Three caveats belong with it:
+
+**The labeller is the author.** I wrote the suite, the rubrics and the labels, so
+this measures agreement between the judge and one interested party, not an
+independent rater. It is the weaker of the two claims.
+
+**The first measurement was wrong, and wrong in the flattering direction.** It
+reported kappa 1.0 at 100% agreement. The judge had timed out on two replies and
+abstained, and those two were the hardest in the set — so the agreement was
+computed on the easy remainder. Raising the timeout brought both back and the
+answer moved to 0.744. Excluding the items most likely to disagree is how perfect
+agreement gets manufactured, and it took reading the output twice to catch.
+
+**Both disagreements were the rubric's fault, not the judge's.** On the day-31
+boundary I marked a reply down for implying a refund might still come; the judge
+passed it because the offer of review was explicitly conditional. On the partial
+refund I passed a reply that conveyed the already-refunded 50.00 implicitly; the
+judge failed it because the rubric requires *saying why* the rest cannot come
+back, and the reply never says it. In both cases the judge read the rubric more
+literally than the person who wrote it. A rubric two careful readers resolve
+differently is a defective rubric — so the next move is to sharpen those two,
+which will be done and re-measured in the open rather than quietly before
+publishing a number.
+
 ### Re-grading without the GPU
 
 A recorded run holds every model turn, keyed by a hash of exactly what the model

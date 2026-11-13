@@ -19,8 +19,17 @@ import json
 import sys
 from pathlib import Path
 
+from .agreement import agreement, format_agreement
 from .cases import load_suite
 from .client import shopdesk_client
+from .judge import (
+    judge_artifact,
+    judged_rate,
+    judged_reply_keys,
+    verdict_map,
+    write_judgements,
+)
+from .labels import align, load_labels, template
 from .providers import OllamaProvider, OpenAICompatProvider, Provider
 from .replay import ReplayProvider
 from .report import compare, format_comparison, format_text, gate, summarise
@@ -46,6 +55,7 @@ def _provider(
         seed=args.seed,
         num_ctx=args.num_ctx,
         think=think,
+        timeout_s=getattr(args, "timeout", 180.0),
     )
 
 
@@ -191,6 +201,97 @@ def cmd_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def _suite_text(suite_path: str) -> tuple[dict[str, str], dict[str, str]]:
+    """Rubrics and customer messages, by case id."""
+    suite = load_suite(Path(suite_path))
+    rubrics = {c.id: (c.rubric or "") for c in suite.cases}
+    prompts = {c.id: c.prompt for c in suite.cases}
+    return rubrics, prompts
+
+
+def cmd_label_template(args: argparse.Namespace) -> int:
+    artifact = json.loads(Path(args.artifact).read_text(encoding="utf-8"))
+    rubrics, _ = _suite_text(args.suite)
+    text = template(artifact, rubrics)
+    out = Path(args.out)
+    if out.exists() and not args.force:
+        print(str(out) + " already exists. Labels are the one thing here that "
+              "cannot be regenerated, so this will not overwrite them without "
+              "--force.")
+        return 2
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+    print("wrote " + str(out))
+    print("fill in each `label:` with pass, fail or unsure, then run "
+          "`proofbench judge`.")
+    return 0
+
+
+def cmd_judge(args: argparse.Namespace) -> int:
+    artifact = json.loads(Path(args.artifact).read_text(encoding="utf-8"))
+    rubrics, prompts = _suite_text(args.suite)
+    provider = _provider(args, args.model, think=args.think)
+
+    def tick(record: dict) -> None:
+        mark = {"pass": ".", "fail": "X", "abstain": "?"}.get(record["verdict"], "?")
+        sys.stderr.write(mark)
+        sys.stderr.flush()
+
+    judged = judge_artifact(
+        provider, artifact, rubrics, prompts, on_each=None if args.quiet else tick
+    )
+    if not args.quiet:
+        sys.stderr.write("\n")
+
+    out = Path(args.out)
+    write_judgements(judged, out / "judgements.json")
+
+    rate = judged_rate(judged)
+    print("judge " + str(judged["meta"]["judge_model"])
+          + " on " + str(rate["replies"]) + " distinct replies"
+          + "  (" + str(judged["meta"]["judge_tokens"]) + " tokens)")
+    if judged["meta"]["skipped_no_rubric"]:
+        print("skipped, no rubric: "
+              + ", ".join(sorted(set(judged["meta"]["skipped_no_rubric"]))))
+    print("the judge passed " + str(rate["passed"]) + " of " + str(rate["decided"])
+          + " it decided"
+          + ("" if not rate["abstained"] else
+             ", and abstained on " + str(rate["abstained"])))
+
+    if not args.labels:
+        print("\nNo labels given, so this rate is only what one model thought of "
+              "another model's prose. Run with --labels to see what it is worth.")
+        print("wrote " + str(out / "judgements.json"))
+        return 0
+
+    labels = load_labels(args.labels)
+    alignment = align(labels, verdict_map(judged), judged_reply_keys(judged))
+    print("\n" + alignment.describe())
+    if not alignment.human:
+        print("nothing to compare: no label matched a judged reply.")
+        return 2
+    result = agreement(alignment.human, alignment.judge, draws=args.bootstrap_draws)
+    print()
+    print(format_agreement(result))
+    if alignment.stale_labels:
+        print("\nstale labels (the reply changed since they were written):")
+        for case_id, _ in sorted(alignment.stale_labels):
+            print("  " + case_id)
+    if alignment.judge_abstained:
+        print("\nthe judge gave no verdict on these, so they are excluded from the "
+              "agreement (a judge failure, not a disagreement):")
+        for case_id, _ in sorted(alignment.judge_abstained):
+            print("  " + case_id)
+    (out / "agreement.json").write_text(
+        json.dumps({"agreement": result, "alignment": alignment.model_dump()}, indent=2),
+        encoding="utf-8",
+    )
+    print("\nwrote " + str(out / "judgements.json") + " and "
+          + str(out / "agreement.json"))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="proofbench", description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -231,6 +332,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--temperature", type=float, default=0.0)
     run.add_argument("--seed", type=int, default=7)
     run.add_argument("--num-ctx", type=int, default=8192)
+    run.add_argument("--timeout", type=float, default=300.0,
+                     help="seconds per model call")
     run.add_argument("--think", action=argparse.BooleanOptionalAction, default=None,
                      help="force the actor model to think, or not; omit to leave "
                           "the model default alone")
@@ -251,6 +354,43 @@ def build_parser() -> argparse.ArgumentParser:
     comparison.add_argument("--before-name", default="")
     comparison.add_argument("--after-name", default="")
     comparison.set_defaults(func=cmd_compare)
+
+    label_cmd = subparsers.add_parser(
+        "label-template", help="write a YAML file of replies to hand-label")
+    label_cmd.add_argument("artifact")
+    label_cmd.add_argument("--suite", default="suites/support")
+    label_cmd.add_argument("--out", default="eval/labels/labels.yaml")
+    label_cmd.add_argument("--force", action="store_true",
+                           help="overwrite an existing label file")
+    label_cmd.set_defaults(func=cmd_label_template)
+
+    judge_cmd = subparsers.add_parser(
+        "judge", help="judge a recorded run's replies, and measure the judge")
+    judge_cmd.add_argument("artifact")
+    judge_cmd.add_argument("--suite", default="suites/support")
+    judge_cmd.add_argument("--labels", default="",
+                           help="hand labels to measure the judge against")
+    judge_cmd.add_argument("--out", default="eval/judge")
+    judge_cmd.add_argument("--bootstrap-draws", type=int, default=5000)
+    judge_cmd.add_argument("--quiet", action="store_true")
+    judge_cmd.add_argument("--ollama", default="http://localhost:11434")
+    judge_cmd.add_argument("--model", default="qwen3.5:9b")
+    judge_cmd.add_argument("--think", action=argparse.BooleanOptionalAction, default=None)
+    judge_cmd.add_argument("--openai-base-url", default="")
+    judge_cmd.add_argument("--api-key", default="")
+    judge_cmd.add_argument("--price-in", type=float, default=0.0)
+    judge_cmd.add_argument("--price-out", type=float, default=0.0)
+    judge_cmd.add_argument("--temperature", type=float, default=0.0)
+    judge_cmd.add_argument("--seed", type=int, default=7)
+    judge_cmd.add_argument("--num-ctx", type=int, default=8192)
+    # 180s was the first default and it silently dropped the two hardest replies
+    # in the suite: a thinking judge ran past it on exactly those, they abstained,
+    # and the agreement was then computed on the easy remainder. Excluding the
+    # items most likely to disagree is how perfect agreement gets manufactured.
+    judge_cmd.add_argument("--timeout", type=float, default=900.0,
+                           help="seconds per verdict (default 900; a thinking "
+                                "judge can take minutes on a hard reply)")
+    judge_cmd.set_defaults(func=cmd_judge)
 
     gate_parser = subparsers.add_parser("gate", help="compare a summary with a baseline")
     gate_parser.add_argument("summary")
