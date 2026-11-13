@@ -5,9 +5,9 @@ person. That means somebody has to sit down and label replies, and it means the
 labels have to be pinned to the exact replies they were written about.
 
 So every label carries a hash of the reply it judged. When a later run produces a
-different reply - a new model, a changed prompt, or just the run-to-run variance
-this suite has plenty of - the hash stops matching and the label is reported as
-stale rather than quietly applied to text nobody ever read. Labels are the one
+different reply - a new model, a changed prompt, a changed temperature - the
+hash stops matching and the label is reported as stale rather than quietly
+applied to text nobody ever read. Labels are the one
 part of an eval that cannot be regenerated, which is exactly why they are the
 part most likely to drift out of date without anyone noticing.
 

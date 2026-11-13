@@ -393,9 +393,12 @@ def gate(
 
     The per-case rule needs the same restraint, and the first version did not
     have it: it failed the build whenever a case that used to pass every repeat
-    now failed any of them. Measuring this model showed why that is too strict —
-    results are identical across repeats inside one run but move between runs, so
-    a case dropping from 3/3 to 2/3 is the noise floor, not a regression. A case
+    now failed any of them. Measuring this model showed why that is too strict.
+    Three runs on identical input went 79.2%, 79.2%, 75.0% - two byte-identical,
+    the third rewriting 9 of 24 replies and flipping one safety case - so a case
+    dropping from 3/3 to 2/3 is inside the noise floor rather than a regression.
+    (An earlier version of this comment put the spread at 12.5 points, which was
+    inflated by a wall-clock leak in the simulation; it is 4.2.) A case
     is only failed here when it goes from clean to failing *every* repeat. One
     that becomes unreliable is reported as newly flaky and does not fail the
     build, because a gate that fires on its own noise gets switched off.

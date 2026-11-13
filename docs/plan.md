@@ -133,6 +133,13 @@ policy and never the governing one; it obeyed one of five planted injections; an
 the reviewer architecture was defeated by injection because the transcript it
 reads carries the attack.
 
+A correction belongs with that headline: 66.7% was measured while shopdesk was
+stamping escalations with the wall clock, which the agent read back in a tool
+result, so that run is not reproducible and the headline is now 79.2% on the
+fixed simulation. The 12.5-point between-run spread reported with it was inflated
+by the same bug and by one run having the reviewer enabled; measured properly on
+three fixed runs it is 4.2 points - real, but a third of what was claimed.
+
 Two of the four measurement runs were discarded rather than published, because
 checking the failures against their traces turned up a bug of the author's each
 time - a leak grader that counted an order id the customer had themselves quoted,

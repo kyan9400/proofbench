@@ -48,8 +48,12 @@ def ok_reply(content: str = "hello", **extra) -> httpx.Response:
 
 
 def test_temperature_and_seed_are_always_sent():
-    """Not for determinism — this model varies between runs anyway — but so that
-    a result can be traced to the sampling it was produced under."""
+    """So that a result can be traced to the sampling it was produced under.
+
+    Not for determinism: temperature 0 gets close on this model - two runs out of
+    three matched byte for byte - but the third diverged on 9 of 24 cases, so the
+    recorded sampling is a provenance record rather than a guarantee.
+    """
     provider, sent = ollama_with(lambda r: ok_reply(), temperature=0.0, seed=7)
     provider.complete([{"role": "user", "content": "hi"}], [])
     assert sent[0]["options"]["temperature"] == 0.0

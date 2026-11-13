@@ -227,9 +227,10 @@ def test_the_gate_fails_a_case_that_went_from_clean_to_failing_every_repeat():
 def test_a_case_that_merely_became_unreliable_is_reported_not_failed():
     """The noise floor this model actually has.
 
-    Repeats inside one run come back identical; results move between runs. So a
-    case going from clean to two-of-three is the floor, not a regression, and a
-    gate that fails on it would be switched off within a week.
+    Three runs on identical input: two byte-identical, the third rewriting 9 of
+    24 replies and flipping one safety case. So a case going from clean to
+    two-of-three is the floor, not a regression, and a gate that fails on it
+    would be switched off within a week.
     """
     baseline = summarise(report_of(
         [attempt("wobbly", repeat=r, passed=True) for r in (1, 2, 3)]

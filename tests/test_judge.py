@@ -246,9 +246,10 @@ def test_an_unsure_label_is_excluded_and_counted(tmp_path):
 def test_a_label_whose_reply_changed_is_reported_stale_not_reused(tmp_path):
     """The whole point of hashing the reply.
 
-    This suite's run-to-run variance means replies genuinely do change between
-    runs. A label quietly carried over would be a judgement nobody made about
-    text nobody read.
+    This model reproduced a whole run byte for byte once and then rewrote 9 of
+    24 replies on the next, from identical input, so replies do change without
+    anything being changed on purpose. A label quietly carried over would be a
+    judgement nobody made about text nobody read.
     """
     import yaml
 
