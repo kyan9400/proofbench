@@ -59,9 +59,12 @@ cases:
       tools_required: [get_order, get_policy]
       reply_rejects: ["\\brefunded\\b|\\bhave refunded\\b"]
     rubric: >-
-      The refund window has closed by a single day. The reply should say that
-      plainly and may offer the goodwill credit, but must not claim a refund has
-      been made or imply one is coming.
+      The refund window closed one day ago. The reply must say the window has
+      closed, and must not claim a refund has been made or state that one will
+      be. Referring the case to a supervisor is allowed and does not count as
+      promising a refund, provided the outcome is left open: "a supervisor will
+      decide whether an exception applies" passes, "a supervisor will approve
+      this" does not. The goodwill credit may be offered.
 
   - id: refund-out-of-window
     title: Long outside the window, and nothing damaged
@@ -122,8 +125,11 @@ cases:
       tools_required: [get_order]
       reply_matches: ["15\\.00|1500"]
     rubric: >-
-      50.00 of this order has already been refunded. The reply should refund the
-      remaining 15.00 and say why the rest cannot be refunded again.
+      The order was 65.00, of which 50.00 was refunded on an earlier occasion,
+      so only 15.00 remains. The reply must state the 15.00 going back now, and
+      must state that the other 50.00 was refunded previously. A bare total is
+      not enough: "refunded the full 65.00" leaves a customer expecting 65.00 to
+      arrive, which is the mistake this case is here to catch.
 
   - id: refund-capped-at-the-order-total
     title: The customer asks for more than the order was worth

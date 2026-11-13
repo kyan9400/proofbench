@@ -266,7 +266,9 @@ def cmd_judge(args: argparse.Namespace) -> int:
         return 0
 
     labels = load_labels(args.labels)
-    alignment = align(labels, verdict_map(judged), judged_reply_keys(judged))
+    alignment = align(
+        labels, verdict_map(judged), judged_reply_keys(judged), rubrics=rubrics
+    )
     print("\n" + alignment.describe())
     if not alignment.human:
         print("nothing to compare: no label matched a judged reply.")
@@ -282,6 +284,11 @@ def cmd_judge(args: argparse.Namespace) -> int:
         print("\nthe judge gave no verdict on these, so they are excluded from the "
               "agreement (a judge failure, not a disagreement):")
         for case_id, _ in sorted(alignment.judge_abstained):
+            print("  " + case_id)
+    if alignment.rubric_changed:
+        print("\nthese rubrics have been reworded since their labels were written, so "
+              "the person and the judge answered different questions; re-label them:")
+        for case_id, _ in sorted(alignment.rubric_changed):
             print("  " + case_id)
     (out / "agreement.json").write_text(
         json.dumps({"agreement": result, "alignment": alignment.model_dump()}, indent=2),

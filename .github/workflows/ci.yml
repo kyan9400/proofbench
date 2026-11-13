@@ -30,3 +30,21 @@ jobs:
 
       - name: the case suite is loadable and every case has a rubric
         run: proofbench validate suites/support
+
+      # The regression gate. A recorded run holds every model turn keyed by a hash
+      # of what the model was shown, so the graders can be re-run against it with
+      # no GPU, no weights and no network - 1110 seconds of model time replayed in
+      # about four. --require-fresh turns a partial match into a failure: a replay
+      # that half matched is not a cheaper measurement, it is a measurement of
+      # something else.
+      #
+      # The rate tolerance in the gate exists for run-to-run model variance, and a
+      # replay has none - so what actually does the work here is the per-case
+      # check, which fails a case that went from clean to failing. On a recording
+      # that can only mean the grading changed.
+      - name: re-grade the recorded run, and gate on it
+        run: |
+          proofbench run suites/support \
+            --replay eval/baseline/artifact.json --require-fresh \
+            --baseline eval/baseline/summary.json \
+            --out "${RUNNER_TEMP}/replay"

@@ -44,6 +44,22 @@ def reply_sha(reply: str) -> str:
     return hashlib.sha256((reply or "").strip().encode("utf-8")).hexdigest()[:16]
 
 
+def rubric_sha(rubric: str) -> str:
+    """Identify the question the labeller was answering.
+
+    A label is an answer to "does this reply satisfy *this* rubric". Pinning it
+    to the reply alone leaves half the question unpinned: edit the rubric and the
+    old answer is silently reused against a question nobody was asked. That is
+    not hypothetical - the first two rubrics this project sharpened were
+    sharpened precisely because two careful readers resolved them differently,
+    and the labels written under the vague versions do not transfer.
+
+    Internal whitespace is collapsed, because re-wrapping a paragraph of YAML
+    does not change what it asks.
+    """
+    return hashlib.sha256(" ".join((rubric or "").split()).encode("utf-8")).hexdigest()[:16]
+
+
 class LabelEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -51,8 +67,12 @@ class LabelEntry(BaseModel):
     reply_sha: str
     label: Verdict
     note: str = ""
-    # Carried for the labeller's benefit and for reading a diff later. Never used
-    # for matching, so editing them cannot change which reply a label applies to.
+    # The rubric is matched on, by hash: see rubric_sha. An empty rubric_sha means
+    # the label predates the pinning and cannot be attributed to any particular
+    # wording, which is reported rather than waved through.
+    rubric_sha: str = ""
+    # Carried for the labeller's benefit and for reading a diff later. Not used
+    # for matching, so re-wrapping the stored copy cannot move a label.
     rubric: str = ""
     reply: str = ""
 
@@ -172,6 +192,7 @@ def template(artifact: dict[str, Any], rubrics: dict[str, str]) -> str:
                 # "unsure" would let a forgotten entry quietly leave the sample.
                 "label": "TODO",
                 "note": "",
+                "rubric_sha": rubric_sha(rubrics.get(entry["case_id"], "")),
                 "rubric": rubrics.get(entry["case_id"], ""),
                 "reply": entry["reply"],
             }
@@ -202,6 +223,11 @@ class Alignment(BaseModel):
     # reported two judge timeouts as "the reply changed since they were written",
     # which is a confident diagnosis of the wrong problem.
     judge_abstained: list[tuple[str, str]] = Field(default_factory=list)
+    # A label written against a different wording of the rubric than the suite now
+    # carries. The reply is unchanged, so this is not reply staleness: the reply
+    # still exists and the judge still has an opinion on it, but the person's
+    # answer was to a different question and cannot be set against it.
+    rubric_changed: list[tuple[str, str]] = Field(default_factory=list)
     unlabelled: list[tuple[str, str]] = Field(default_factory=list)
 
     def describe(self) -> str:
@@ -218,6 +244,11 @@ class Alignment(BaseModel):
                 str(len(self.stale_labels)) + " labels are stale (the reply changed "
                 "since they were written)"
             )
+        if self.rubric_changed:
+            parts.append(
+                str(len(self.rubric_changed)) + " labels were written against an older "
+                "wording of their rubric (excluded; they answer a different question)"
+            )
         if self.unlabelled:
             parts.append(str(len(self.unlabelled)) + " judged replies have no label")
         return "; ".join(parts)
@@ -227,6 +258,7 @@ def align(
     labels: LabelSet,
     verdicts: dict[tuple[str, str], str],
     judged_replies: set[tuple[str, str]] | None = None,
+    rubrics: dict[str, str] | None = None,
 ) -> Alignment:
     """Pair each label with the judge's verdict on the same reply.
 
@@ -234,6 +266,10 @@ def align(
     judge was actually shown, including the ones it abstained on, and is what
     makes it possible to tell a stale label from a judge that failed. Without it
     the two are indistinguishable, and the wrong one gets reported.
+
+    `rubrics` are the suite's current rubrics by case id. Passing them checks each
+    label against the wording it was written under; omitting them skips that check
+    entirely, which is only right when the caller has no suite to hand.
     """
     result = Alignment()
     label_keys = labels.by_key()
@@ -242,6 +278,9 @@ def align(
     for key, entry in label_keys.items():
         if key not in seen:
             result.stale_labels.append(key)
+            continue
+        if rubrics is not None and entry.rubric_sha != rubric_sha(rubrics.get(key[0], "")):
+            result.rubric_changed.append(key)
             continue
         if entry.label == "unsure":
             result.unsure.append(key)

@@ -25,6 +25,7 @@ from proofbench.labels import (
     distinct_replies,
     load_labels,
     reply_sha,
+    rubric_sha,
     template,
 )
 from proofbench.providers import Completion, ScriptedProvider, text_turn
@@ -276,6 +277,58 @@ def test_judgements_serialise_to_something_a_person_can_read(tmp_path):
     # The reply is kept beside the verdict, so a disagreement can be read without
     # cross-referencing the artifact it came from.
     assert judged["judgements"][0]["reply"] == "Refunded 49.99."
+
+
+def test_a_label_written_under_an_older_rubric_is_not_counted(tmp_path):
+    """A label answers "does this reply satisfy *this* rubric".
+
+    Pinning it to the reply alone leaves half the question unpinned. Sharpening a
+    rubric - which this project did, twice, because two readers resolved the old
+    wording differently - would otherwise carry the old answer over to a question
+    nobody was asked, and the disagreement would silently vanish into agreement.
+    """
+    import yaml
+
+    path = tmp_path / "labels.yaml"
+    path.write_text(yaml.safe_dump({"labels": [
+        {"case_id": "reworded", "reply_sha": "h1", "label": "fail",
+         "rubric_sha": reply_sha("the old wording")},
+        {"case_id": "untouched", "reply_sha": "h2", "label": "pass",
+         "rubric_sha": rubric_sha("the same wording")},
+    ]}), encoding="utf-8")
+    labels = load_labels(path)
+
+    alignment = align(
+        labels,
+        verdicts={("reworded", "h1"): "pass", ("untouched", "h2"): "pass"},
+        rubrics={"reworded": "a sharper wording", "untouched": "the same wording"},
+    )
+    assert alignment.rubric_changed == [("reworded", "h1")]
+    assert alignment.keys == [("untouched", "h2")]
+    assert alignment.human == ["pass"]
+    assert "older wording" in alignment.describe()
+
+
+def test_rewrapping_a_rubric_does_not_unpin_its_labels():
+    """Re-flowing a YAML paragraph changes the line breaks, not the question."""
+    assert rubric_sha("The reply must\nstate the amount.") == rubric_sha(
+        "The reply must state the amount."
+    )
+    assert rubric_sha("must state the amount") != rubric_sha("may state the amount")
+
+
+def test_rubrics_are_only_checked_when_the_caller_supplies_them(tmp_path):
+    """Omitting them skips the check rather than failing every label against an
+    empty rubric, which would read as "everything is stale"."""
+    import yaml
+
+    path = tmp_path / "labels.yaml"
+    path.write_text(yaml.safe_dump({"labels": [
+        {"case_id": "a", "reply_sha": "h1", "label": "pass"},
+    ]}), encoding="utf-8")
+    alignment = align(load_labels(path), {("a", "h1"): "pass"})
+    assert alignment.rubric_changed == []
+    assert alignment.human == ["pass"]
 
 
 def test_a_judge_abstention_is_not_reported_as_a_stale_label(tmp_path):

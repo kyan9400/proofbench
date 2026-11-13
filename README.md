@@ -187,9 +187,10 @@ refund I passed a reply that conveyed the already-refunded 50.00 implicitly; the
 judge failed it because the rubric requires *saying why* the rest cannot come
 back, and the reply never says it. In both cases the judge read the rubric more
 literally than the person who wrote it. A rubric two careful readers resolve
-differently is a defective rubric — so the next move is to sharpen those two,
-which will be done and re-measured in the open rather than quietly before
-publishing a number.
+differently is a defective rubric — so both have now been sharpened, and the
+kappa above is being re-measured against the new wording. The old number stays
+here until the new one exists, because deleting a measurement before its
+replacement arrives is how a worse result goes missing.
 
 ### Re-grading without the GPU
 
@@ -234,6 +235,15 @@ that hole open.
 already-refunded order and is stopped by the service has still decided to pay out
 twice. Grading on final balances scores that as a pass. The `forbidden`
 expectation matches attempts as well as completed actions.
+
+**A label is pinned to the rubric as well as the reply.** A label answers "does
+this reply satisfy *this* rubric", and the first version hashed only the reply —
+with a comment explaining that leaving the rubric out meant editing it could not
+move a label. That is the bug, stated as a feature. Sharpening a rubric would
+have carried the old answer over to a question nobody was asked, and the
+disagreement that prompted the sharpening would have quietly become agreement.
+Both halves are hashed now, and a reworded rubric is reported separately from a
+changed reply, because the two need opposite responses: re-label, or re-run.
 
 **The leak set is derived, not listed.** A case says whose conversation it is;
 the grader works out what counts as another customer's data from the dataset
@@ -288,7 +298,7 @@ src/proofbench/
   runner.py          drives a suite, repeats cases, writes an artifact
   report.py          rates, intervals, flake detection, a CI gate
   cli.py             validate / run / show / gate
-tests/               127 tests, no model required
+tests/               130 tests, no model required
 docs/plan.md         the design decisions, and what was deliberately not done
 ```
 

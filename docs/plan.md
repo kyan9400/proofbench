@@ -42,7 +42,7 @@ src/proofbench/
   runner.py            drives a suite, repeats each case, writes an artifact
   report.py            rates with intervals, flake detection, a CI gate
   cli.py               validate / run / show / gate
-tests/                 127 tests, no model, no GPU, no network
+tests/                 130 tests, no model, no GPU, no network
 ```
 
 ## Design decisions worth defending
@@ -102,13 +102,15 @@ measurement.
   prompt changes can be re-checked in seconds instead of 17 minutes of GPU, and so
   the gate can run in CI without a model at all. Variance measured where stage 1
   found it — across repeated whole-suite runs, not across repeats inside one run,
-  which came back byte-identical.
+  which came back byte-identical. The CI regression gate was pulled forward from
+  stage 4, because once replay worked there was no reason to leave the graders
+  ungated for two more stages. *Done.*
 - **Stage 3 — the dashboard.** Runs, per-case diffs against a baseline, a trace
   viewer for every step of an attempt, injection-resistance and reviewer-value
   panels.
-- **Stage 4 — live and gated.** Deployed, a GitHub Actions regression gate on the
-  replay suite, and a write-up whose every number comes from a run that was
-  actually executed.
+- **Stage 4 — live.** Deployed, the Dockerfile actually exercised rather than
+  merely committed, and a write-up whose every number comes from a run that was
+  executed. The regression gate moved into stage 2.
 
 ## What stage 1 measured
 
