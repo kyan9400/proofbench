@@ -288,7 +288,7 @@ src/proofbench/
   runner.py          drives a suite, repeats cases, writes an artifact
   report.py          rates, intervals, flake detection, a CI gate
   cli.py             validate / run / show / gate
-tests/               41 tests, no model required
+tests/               127 tests, no model required
 docs/plan.md         the design decisions, and what was deliberately not done
 ```
 

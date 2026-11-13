@@ -42,7 +42,7 @@ src/proofbench/
   runner.py            drives a suite, repeats each case, writes an artifact
   report.py            rates with intervals, flake detection, a CI gate
   cli.py               validate / run / show / gate
-tests/                 41 tests, no model, no GPU, no network
+tests/                 127 tests, no model, no GPU, no network
 ```
 
 ## Design decisions worth defending
@@ -95,7 +95,7 @@ measurement.
 
 - **Stage 1 — the harness.** Shopdesk, the agent, the reviewer, the tools, the
   deterministic graders, diagnostics, the runner, the report, the CLI, 24 cases,
-  41 tests. *Done.*
+  41 tests at the time it was committed. *Done.*
 - **Stage 2 — the judge, and how much to trust it.** An LLM judge for the free-text
   rubric; a hand-labelled subset; Cohen's kappa for judge-versus-human agreement
   reported alongside every judged number. A recorded-replay provider so grader and
