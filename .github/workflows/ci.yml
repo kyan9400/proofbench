@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: install
+        run: |
+          python -m pip install --upgrade pip==25.3
+          pip install -e ".[dev]"
+
+      - name: lint
+        run: ruff check src tests
+
+      # The whole grader suite runs on a scripted model: no GPU, no network, no
+      # model weights. This is what makes it affordable to run on every push.
+      - name: tests
+        run: pytest -q
+
+      - name: the case suite is loadable and every case has a rubric
+        run: proofbench validate suites/support

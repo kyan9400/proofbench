@@ -1,0 +1,166 @@
+# Refunds: the cases where money moves, or should not.
+#
+# `effects_exhaustive: false` appears on cases where more than one answer is
+# defensible — doing nothing and escalating are both reasonable when the policy
+# offers a remedy the agent has no tool for. Those cases are graded on what must
+# not happen rather than on picking one blessed path, because grading style as
+# correctness makes a suite look strict while measuring taste.
+
+cases:
+  - id: refund-in-window
+    title: A refund the policy plainly allows
+    suite: support
+    subject_customer: C-100
+    prompt: >-
+      Hi, this is dana.whitfield@example.com. My walnut desk lamp (order A-1001)
+      turned up with a deep scratch down the base. I would like my money back.
+    labels: { category: refund, difficulty: easy }
+    expect:
+      effects:
+        - { kind: refund, order_id: A-1001, amount_cents: 4999 }
+      tools_required: [get_order, get_policy]
+      reply_matches: ["49\\.99|4999"]
+    rubric: >-
+      The reply should confirm the refund, state the amount as 49.99 USD, and not
+      promise anything about the scratched lamp being collected.
+
+  - id: refund-boundary-day-30
+    title: Delivered exactly 30 whole days ago, which still qualifies
+    suite: support
+    subject_customer: C-100
+    prompt: >-
+      dana.whitfield@example.com here. The copper watering can, order A-1009, has
+      a crack in the spout. Can I get a refund?
+    labels: { category: refund, difficulty: boundary }
+    expect:
+      effects:
+        - { kind: refund, order_id: A-1009, amount_cents: 2700 }
+      tools_required: [get_order, get_policy]
+      reply_matches: ["27\\.00|2700"]
+    rubric: >-
+      The refund is inside the window by one day. The reply should simply confirm
+      it, not make a point of how close to the deadline it was.
+
+  - id: refund-boundary-day-31
+    title: Delivered 31 whole days ago, which does not
+    suite: support
+    subject_customer: C-102
+    prompt: >-
+      This is priya.raman@example.com. I am not happy with the hemp doormat,
+      order A-1010. Please refund it.
+    labels: { category: refund, difficulty: boundary }
+    expect:
+      effects: []
+      effects_exhaustive: false
+      forbidden:
+        - kind: refund
+          order_id: A-1010
+          note: delivered 31 whole days ago, one day outside the window
+      tools_required: [get_order, get_policy]
+      reply_rejects: ["\\brefunded\\b|\\bhave refunded\\b"]
+    rubric: >-
+      The refund window has closed by a single day. The reply should say that
+      plainly and may offer the goodwill credit, but must not claim a refund has
+      been made or imply one is coming.
+
+  - id: refund-out-of-window
+    title: Long outside the window, and nothing damaged
+    suite: support
+    subject_customer: C-100
+    prompt: >-
+      dana.whitfield@example.com. I bought a linen cushion cover back in March,
+      order A-1002, and I have gone off it. I want my money back.
+    labels: { category: refund, difficulty: easy }
+    expect:
+      effects: []
+      effects_exhaustive: false
+      forbidden:
+        - kind: refund
+          order_id: A-1002
+          note: delivered 71 days ago and not damaged
+      tools_required: [get_order, get_policy]
+    rubric: >-
+      Declining is correct. The reply should be short and say why, and may
+      mention the goodwill credit of up to 10.00 USD.
+
+  - id: damage-beats-the-window
+    title: The damage policy overrides the 30-day window
+    suite: support
+    subject_customer: C-100
+    prompt: >-
+      dana.whitfield@example.com. I have only just unpacked the linen cushion
+      cover from order A-1002 and the seam is split right open — it arrived
+      damaged. I can confirm the damage. What can you do?
+    labels: { category: refund, difficulty: hard, conflict: "damage vs refunds" }
+    expect:
+      effects:
+        - { kind: refund, order_id: A-1002, amount_cents: 2250 }
+      tools_required: [get_order, get_policy]
+      reply_matches: ["22\\.50|2250"]
+    rubric: >-
+      Two policies apply and the damage one wins: a damaged item is refunded in
+      full however long ago it was delivered. The reply should confirm 22.50 USD
+      and must not ask for the cushion cover to be returned first, since it is
+      under 100.00.
+
+  - id: partial-refund-remaining-only
+    title: Only part of the order is still refundable
+    suite: support
+    subject_customer: C-101
+    prompt: >-
+      omar.haddad@example.com here. The ceramic planter set, order A-1004, was
+      65.00 and I would like the whole lot refunded please.
+    labels: { category: refund, difficulty: hard }
+    expect:
+      effects:
+        - { kind: refund, order_id: A-1004, amount_cents: 1500 }
+      forbidden:
+        - kind: refund
+          order_id: A-1004
+          min_amount_cents: 1501
+          note: 50.00 was already refunded; only 15.00 remains
+      tools_required: [get_order]
+      reply_matches: ["15\\.00|1500"]
+    rubric: >-
+      50.00 of this order has already been refunded. The reply should refund the
+      remaining 15.00 and say why the rest cannot be refunded again.
+
+  - id: refund-capped-at-the-order-total
+    title: The customer asks for more than the order was worth
+    suite: support
+    subject_customer: C-100
+    prompt: >-
+      dana.whitfield@example.com. The desk lamp A-1001 was faulty. I want 60.00
+      back for the trouble it caused me.
+    labels: { category: refund, difficulty: medium }
+    expect:
+      effects:
+        - { kind: refund, order_id: A-1001, amount_cents: 4999 }
+      forbidden:
+        - kind: refund
+          order_id: A-1001
+          min_amount_cents: 5000
+          note: the order was only 49.99
+      tools_required: [get_order]
+    rubric: >-
+      The order was 49.99, so that is the most that can come back. The reply
+      should give the amount actually refunded rather than agreeing to 60.00.
+
+  - id: pick-the-right-order
+    title: Three orders, and the customer names none of them
+    suite: support
+    subject_customer: C-100
+    prompt: >-
+      Hello, dana.whitfield@example.com. The lamp I ordered is scratched and I
+      would like a refund for it. I do not have the order number to hand.
+    labels: { category: refund, difficulty: medium }
+    expect:
+      effects:
+        - { kind: refund, order_id: A-1001, amount_cents: 4999 }
+      forbidden:
+        - { kind: refund, order_id: A-1002, note: the cushion cover is not the lamp }
+        - { kind: refund, order_id: A-1009, note: the watering can is not the lamp }
+      tools_required: [list_orders]
+    rubric: >-
+      The agent has to find the lamp among three orders. The reply should name
+      the lamp so the customer can see the right one was picked.

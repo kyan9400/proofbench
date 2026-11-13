@@ -1,0 +1,50 @@
+[project]
+name = "proofbench"
+version = "0.1.0"
+description = "An evaluation platform for LLM agents: deterministic graders first, a measured judge second."
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+  "fastapi==0.162.0",
+  "uvicorn==0.54.0",
+  "pydantic==2.14.2",
+  "httpx==0.28.1",
+  "PyYAML==6.0.3",
+  "numpy==2.5.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.2.0",
+  "ruff==0.17.3",
+]
+otel = [
+  "opentelemetry-sdk==1.45.2",
+  "opentelemetry-exporter-otlp-proto-http==1.45.2",
+  "opentelemetry-instrumentation-fastapi==0.66b2",
+  "opentelemetry-instrumentation-httpx==0.66b2",
+]
+
+[project.scripts]
+proofbench = "proofbench.cli:main"
+
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+# Guard clauses that each return False read better than one negated conjunction,
+# and the graders are full of them.
+ignore = ["SIM103"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

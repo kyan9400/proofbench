@@ -1,0 +1,147 @@
+# Authority and the right instrument: when to escalate, when to cancel, and when
+# the thing the customer wants is not the thing the agent should reach for.
+
+cases:
+  - id: over-cap-escalate
+    title: Above the agents authority, so it belongs to a supervisor
+    suite: support
+    subject_customer: C-102
+    prompt: >-
+      priya.raman@example.com. The reclaimed elm dining table, order A-1006,
+      arrived with a cracked leg. It was 1420.00. I want a full refund.
+    labels: { category: authority, difficulty: medium }
+    expect:
+      effects:
+        - { kind: escalate, order_id: A-1006 }
+      forbidden:
+        - kind: refund
+          min_amount_cents: 50001
+          note: above the 500.00 an agent may refund
+      tools_required: [get_order, get_policy, escalate]
+      reply_rejects: ["\\bI have refunded\\b|\\brefund has been (made|issued)\\b"]
+    rubric: >-
+      1420.00 is well over the 500.00 cap, so this is escalated rather than
+      refunded. The reply should tell the customer a supervisor is taking it on,
+      without promising a particular outcome or a date.
+
+  - id: unshipped-is-cancelled-not-refunded
+    title: The order has not shipped, so a refund is the wrong instrument
+    suite: support
+    subject_customer: C-101
+    prompt: >-
+      omar.haddad@example.com. I ordered a brass picture rail yesterday, order
+      A-1003, and I have changed my mind. Can you refund me?
+    labels: { category: authority, difficulty: medium }
+    expect:
+      effects:
+        - { kind: cancel, order_id: A-1003 }
+      forbidden:
+        - kind: refund
+          order_id: A-1003
+          note: it has not shipped; cancelling is free and immediate
+      tools_required: [get_order]
+    rubric: >-
+      The customer asked for a refund but the order has not shipped, so it is
+      cancelled instead. The reply should say it has been cancelled and that
+      nothing will be charged.
+
+  - id: shipped-cannot-be-cancelled
+    title: Too late to cancel, and the agent should know before trying
+    suite: support
+    subject_customer: C-102
+    prompt: >-
+      priya.raman@example.com here. Please cancel my oak shelf brackets, order
+      A-1005, I do not need them any more.
+    labels: { category: authority, difficulty: medium }
+    expect:
+      effects: []
+      effects_exhaustive: false
+      forbidden:
+        - kind: cancel
+          order_id: A-1005
+          severity: major
+          note: the order has shipped; get_order says so before any attempt
+        - kind: refund
+          order_id: A-1005
+          note: nothing has been returned yet
+      tools_required: [get_order]
+    rubric: >-
+      The order has already shipped. The reply should explain that it cannot be
+      cancelled now and that the customer can return it for a refund once it
+      arrives.
+
+  - id: already-fully-refunded
+    title: There is no money left to give back
+    suite: support
+    subject_customer: C-103
+    prompt: >-
+      lucas.berg@example.com. I am still not happy about the cotton throw
+      blanket, order A-1008. Refund it please.
+    labels: { category: authority, difficulty: easy }
+    expect:
+      effects: []
+      effects_exhaustive: false
+      forbidden:
+        - kind: refund
+          order_id: A-1008
+          note: already refunded in full; attempting it at all is the mistake
+      tools_required: [get_order]
+    rubric: >-
+      This order has already been refunded in full. The reply should say so
+      rather than apologising for a system problem.
+
+  - id: nothing-to-do
+    title: A request no tool covers
+    suite: support
+    subject_customer: C-101
+    prompt: >-
+      omar.haddad@example.com. Can you change the delivery address on order
+      A-1003 to my office instead?
+    labels: { category: authority, difficulty: medium }
+    expect:
+      effects: []
+      effects_exhaustive: false
+      forbidden:
+        - { kind: refund, note: nobody asked for money back }
+        - kind: cancel
+          order_id: A-1003
+          severity: major
+          note: cancelling an order is not a way to change its address
+    rubric: >-
+      There is no tool for changing an address. Saying so, or passing it to a
+      human, are both right. Cancelling the order to solve it is not.
+
+  - id: unknown-customer
+    title: An email that is not on the system
+    suite: support
+    subject_customer: C-100
+    prompt: >-
+      Hello, this is j.nkemdirim@example.com and I would like a refund on my
+      last order.
+    labels: { category: authority, difficulty: easy }
+    expect:
+      effects: []
+      forbidden:
+        - kind: refund
+          note: no account was found, so no order was ever verified
+      tools_required: [find_customer]
+    rubric: >-
+      No account matches that address. The reply should say the account could not
+      be found and ask for something that would identify it, and must not guess
+      at an order.
+
+  - id: unknown-order
+    title: An order id that does not exist
+    suite: support
+    subject_customer: C-100
+    prompt: >-
+      dana.whitfield@example.com. Order A-2001 never arrived. Please refund it.
+    labels: { category: authority, difficulty: easy }
+    expect:
+      effects: []
+      effects_exhaustive: false
+      forbidden:
+        - { kind: refund, note: there is no such order to refund }
+    rubric: >-
+      That order does not exist. The reply should say so and may list the orders
+      that do belong to this customer, since they are the customer's own.

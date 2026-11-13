@@ -1,0 +1,7 @@
+# One line ending everywhere. The runner, the suites and the artifacts are read
+# on Windows and in Linux containers, and a CRLF round-trip shows up as a diff in
+# every committed JSON artifact.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.mp4 binary
