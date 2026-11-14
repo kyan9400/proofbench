@@ -7,6 +7,8 @@ wrong is worse than no interval, because it looks like rigour.
 
 from __future__ import annotations
 
+import json
+
 from proofbench.agent import AgentRun
 from proofbench.cases import Severity
 from proofbench.graders import GraderResult
@@ -362,3 +364,15 @@ def test_compare_shows_diagnostics_moving():
     result = compare(before, after)
     assert result["diagnostics"]["took-no-action"] == {"before": 1, "after": 0}
     assert result["diagnostics"]["blocked-by-the-reviewer"] == {"before": 0, "after": 1}
+
+
+def test_the_gate_command_fails_when_the_baseline_it_was_given_is_missing(tmp_path, capsys):
+    """A mistyped baseline path in CI used to mean "no baseline, so pass" - the
+    gate switched itself off and reported success."""
+    from proofbench.cli import main
+
+    summary = tmp_path / "summary.json"
+    summary.write_text(json.dumps(summarise(report_of([attempt("a")]))), encoding="utf-8")
+    assert main(["gate", str(summary), "--baseline", str(tmp_path / "nope.json")]) == 2
+    assert "baseline not found" in capsys.readouterr().out
+    assert main(["gate", str(summary)]) == 0

@@ -48,7 +48,7 @@ src/proofbench/
   agreement.py         kappa, its interval, and what to say when it is undefined
   cli.py               validate / run / show / compare / gate /
                        label-template / judge / panel / agree
-tests/                 165 tests, no model, no GPU, no network
+tests/                 167 tests, no model, no GPU, no network
 ```
 
 ## Design decisions worth defending
@@ -142,8 +142,9 @@ reads carries the attack.
 
 A correction belongs with that headline: 66.7% was measured while shopdesk was
 stamping escalations with the wall clock, which the agent read back in a tool
-result, so that run is not reproducible and the headline is now 79.2% on the
-fixed simulation. The 12.5-point between-run spread reported with it was inflated
+result, so that run is not reproducible. On the fixed simulation, and after the
+grader fixes in the README's *What an audit found*, the headline is 75.0% fully
+correct and 95.8% with no critical failure. The 12.5-point between-run spread reported with it was inflated
 by the same bug and by one run having the reviewer enabled; measured properly on
 three fixed runs it is 4.2 points - real, but a third of what was claimed.
 

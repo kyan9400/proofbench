@@ -60,6 +60,10 @@ def _provider(
             temperature=args.temperature,
             price_in_per_mtok=args.price_in,
             price_out_per_mtok=args.price_out,
+            # Missing until an audit noticed: the judge's 900 s ceiling - raised
+            # because 180 s silently dropped the hardest replies - never reached
+            # this provider, which ran at its own 180 s default.
+            timeout_s=getattr(args, "timeout", 180.0),
         )
     return OllamaProvider(
         base_url=args.ollama,
@@ -206,7 +210,13 @@ def cmd_show(args: argparse.Namespace) -> int:
 def cmd_gate(args: argparse.Namespace) -> int:
     summary = json.loads(Path(args.summary).read_text(encoding="utf-8"))
     baseline: dict | None = None
-    if args.baseline and Path(args.baseline).exists():
+    if args.baseline:
+        # A baseline that was asked for and is not there is an error, not "no
+        # baseline, so pass". A mistyped path in CI would otherwise turn the gate
+        # off and report success.
+        if not Path(args.baseline).exists():
+            print("baseline not found: " + args.baseline)
+            return 2
         baseline = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
     ok, lines = gate(
         summary, baseline, tolerance=args.tolerance, strict=_strict(summary, args)
