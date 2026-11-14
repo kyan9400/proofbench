@@ -46,9 +46,10 @@ src/proofbench/
   labels.py            reference labels, pinned to the reply and the rubric
   panel.py             a blind rater panel, and the labels derived from it
   agreement.py         kappa, its interval, and what to say when it is undefined
+  dashboard.py         re-grades every recorded run and writes the one-file dashboard
   cli.py               validate / run / show / compare / gate /
-                       label-template / judge / panel / agree
-tests/                 167 tests, no model, no GPU, no network
+                       label-template / judge / panel / agree / dashboard
+tests/                 171 tests, no model, no GPU, no network
 ```
 
 ## Design decisions worth defending
@@ -125,7 +126,9 @@ measurement.
   ungated for two more stages. *Done.*
 - **Stage 3 — the dashboard.** Runs, per-case diffs against a baseline, a trace
   viewer for every step of an attempt, injection-resistance and reviewer-value
-  panels.
+  panels, and the judge against the panel. One self-contained HTML file, built by
+  re-grading every recorded run by replay so that every run on it is graded by the
+  same code. *Done.*
 - **Stage 4 — live.** Deployed, the Dockerfile actually exercised rather than
   merely committed, and a write-up whose every number comes from a run that was
   executed. The regression gate moved into stage 2.

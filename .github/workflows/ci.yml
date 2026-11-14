@@ -48,3 +48,13 @@ jobs:
             --replay eval/baseline/artifact.json --require-fresh \
             --baseline eval/baseline/summary.json \
             --out "${RUNNER_TEMP}/replay"
+
+      # The dashboard re-grades every recorded run by replay, so building it is
+      # also a check: a run that stops replaying whole is reported, not hidden.
+      - name: build the dashboard
+        run: proofbench dashboard --out "${RUNNER_TEMP}/dashboard/index.html"
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: dashboard
+          path: ${{ runner.temp }}/dashboard/index.html

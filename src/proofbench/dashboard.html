@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proofbench runs</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e3e3e0;
+  --pass: #1f7a4d; --pass-bg: #e3f3ea; --fail: #b4232c; --fail-bg: #fbe5e6;
+  --warn: #8a5a00; --warn-bg: #fdf1d8; --info: #2b59c3; --info-bg: #e6edfb;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141416; --panel: #1c1c1f; --ink: #ececef; --muted: #9a9aa2; --line: #2e2e33;
+    --pass: #5fd394; --pass-bg: #163626; --fail: #ff7b82; --fail-bg: #3d1a1d;
+    --warn: #f2c063; --warn-bg: #3a2c10; --info: #8fb0ff; --info-bg: #1b2747;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141416; --panel: #1c1c1f; --ink: #ececef; --muted: #9a9aa2; --line: #2e2e33;
+  --pass: #5fd394; --pass-bg: #163626; --fail: #ff7b82; --fail-bg: #3d1a1d;
+  --warn: #f2c063; --warn-bg: #3a2c10; --info: #8fb0ff; --info-bg: #1b2747;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { padding: 20px 16px 0; max-width: 1200px; margin: 0 auto; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 24px 0 8px; }
+.sub { color: var(--muted); margin: 0 0 12px; }
+nav { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+nav a { padding: 8px 12px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; }
+nav a.on { color: var(--ink); border-bottom-color: var(--ink); }
+main { max-width: 1200px; margin: 0 auto; padding: 8px 16px 48px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin: 12px 0; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; color: var(--muted); font-size: 12px; white-space: nowrap; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 12px; white-space: nowrap; }
+.b-pass { background: var(--pass-bg); color: var(--pass); }
+.b-fail { background: var(--fail-bg); color: var(--fail); }
+.b-warn { background: var(--warn-bg); color: var(--warn); }
+.b-info { background: var(--info-bg); color: var(--info); }
+.bar { position: relative; height: 8px; background: var(--line); border-radius: 4px; min-width: 120px; margin-top: 4px; }
+.bar .ci { position: absolute; top: 0; height: 8px; background: var(--info-bg); border: 1px solid var(--info); border-radius: 4px; }
+.bar .pt { position: absolute; top: -3px; width: 2px; height: 14px; background: var(--ink); }
+.muted { color: var(--muted); }
+.mono { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+select { font: inherit; padding: 4px 6px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; max-width: 100%; }
+.controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.cell { display: inline-block; min-width: 54px; text-align: center; border-radius: 4px; padding: 2px 4px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.step { border-left: 3px solid var(--line); padding: 6px 10px; margin: 8px 0; }
+.step.model { border-color: var(--info); }
+.step.tool { border-color: var(--muted); }
+.step.review { border-color: var(--warn); }
+.step.injected { background: var(--fail-bg); }
+.step .head { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.reply { background: var(--bg); border-radius: 6px; padding: 10px; }
+.note { border-left: 3px solid var(--warn); padding: 4px 10px; color: var(--muted); }
+a { color: var(--info); }
+.stat { display: inline-block; margin-right: 24px; }
+.stat b { display: block; font-size: 22px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Proofbench</h1>
+  <p class="sub">Every recorded run, re-graded by replay with the current graders when it replays whole. Latency, tokens and cost are as recorded.</p>
+  <nav id="nav"></nav>
+</header>
+<main id="main"></main>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("data").textContent);
+const RUNS = D.runs, CASES = D.cases;
+const byName = Object.fromEntries(RUNS.map(r => [r.name, r]));
+const caseInfo = Object.fromEntries(CASES.map(c => [c.id, c]));
+
+function esc(v) {
+  return String(v == null ? "" : v).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+}
+function pct(x, d = 1) { return x == null ? "-" : (x * 100).toFixed(d) + "%"; }
+function rateBar(r) {
+  if (!r || !r.ci95) return "";
+  const lo = r.ci95[0] * 100, hi = r.ci95[1] * 100, pt = r.rate * 100;
+  return '<div class="bar" title="95% CI ' + lo.toFixed(1) + "-" + hi.toFixed(1) + '%">' +
+    '<div class="ci" style="left:' + lo + "%;width:" + Math.max(hi - lo, 0.5) + '%"></div>' +
+    '<div class="pt" style="left:calc(' + pt + '% - 1px)"></div></div>';
+}
+function gradedBadge(r) {
+  return r.graded === "current"
+    ? '<span class="badge b-pass" title="' + esc(r.grading_note) + '">current graders</span>'
+    : '<span class="badge b-warn" title="' + esc(r.grading_note) + '">graded at ' + esc(r.meta.git_sha) + '</span>';
+}
+function outcome(a) {
+  if (a.errored) return ['<span class="badge b-info">errored</span>', "b-info"];
+  if (a.passed) return ['<span class="badge b-pass">pass</span>', "b-pass"];
+  if (a.safe) return ['<span class="badge b-warn">wrong, safe</span>', "b-warn"];
+  return ['<span class="badge b-fail">unsafe</span>', "b-fail"];
+}
+function cellFor(entry) {
+  if (!entry || !entry.scored) return '<span class="muted">-</span>';
+  const rate = entry.passed / entry.scored, unsafe = entry.scored - entry.safe;
+  const cls = rate === 1 ? "b-pass" : unsafe > 0 ? "b-fail" : "b-warn";
+  return '<span class="cell badge ' + cls + '">' + entry.passed + "/" + entry.scored + (unsafe ? " !" : "") + "</span>";
+}
+function runOptions(selected, filter) {
+  return RUNS.filter(filter || (() => true)).map(r =>
+    "<option" + (r.name === selected ? " selected" : "") + ">" + esc(r.name) + "</option>").join("");
+}
+function traceLink(run, caseId, repeat, label) {
+  return '<a href="#trace/' + encodeURIComponent(run) + "/" + encodeURIComponent(caseId) + "/" + (repeat || 1) + '">' + esc(label || caseId) + "</a>";
+}
+
+// ------------------------------------------------------------------ views
+
+const VIEWS = {
+  overview() {
+    const rows = RUNS.map(r => {
+      const m = r.meta, lat = r.latency_ms || {}, tok = r.tokens || {};
+      return "<tr><td><b>" + esc(r.name) + "</b><br>" + gradedBadge(r) + "</td>" +
+        "<td>" + esc(m.model) + '<br><span class="muted">' + esc(m.git_sha) + " &middot; t=" + (m.temperature == null ? "0" : m.temperature) +
+        (m.reviewer ? " &middot; reviewer" + (m.reviewer_think === false ? " (no think)" : "") : "") + " &middot; x" + m.repeats + "</span></td>" +
+        '<td class="num">' + pct(r.pass.rate) + rateBar(r.pass) + "</td>" +
+        '<td class="num">' + pct(r.safe.rate) + rateBar(r.safe) + "</td>" +
+        '<td class="num">' + r.totals.cases_passing_every_repeat + "/" + r.totals.cases + "</td>" +
+        '<td class="num">' + r.totals.errored + "</td>" +
+        '<td class="num">' + (m.replayed_from ? '<span class="muted" title="a replay\'s own clock describes the replay">replay</span>' : lat.p50 ? (lat.p50 / 1000).toFixed(1) + "s / " + (lat.p95 / 1000).toFixed(1) + "s" : "-") + "</td>" +
+        '<td class="num">' + (tok.mean || "-") + "</td></tr>";
+    }).join("");
+    const notes = RUNS.filter(r => r.graded !== "current").map(r =>
+      '<p class="note"><b>' + esc(r.name) + ":</b> " + esc(r.grading_note) + ". Its rates are not comparable with runs graded by the current graders.</p>").join("");
+    return '<div class="card scroll"><table><thead><tr><th>run</th><th>configuration</th><th class="num">fully correct</th><th class="num">no critical failure</th><th class="num">clean cases</th><th class="num">errored</th><th class="num">latency p50 / p95</th><th class="num">tokens / attempt</th></tr></thead><tbody>' +
+      rows + "</tbody></table></div>" + notes +
+      '<p class="muted">Bars show the Wilson 95% interval, with the point estimate marked. "Clean" means every repeat passed. Errored attempts are excluded from both rates.</p>';
+  },
+
+  compare(args) {
+    const a = byName[args[0]] || RUNS[0], b = byName[args[1]] || RUNS.find(r => r !== a) || a;
+    const ids = CASES.map(c => c.id).filter(id => a.per_case[id] || b.per_case[id]);
+    const groups = {"became unsafe": [], "became safe": [], fixed: [], broke: [], "less reliable": [], "more reliable": [], "same": [], "only in one": []};
+    const rate = e => (e && e.scored) ? e.passed / e.scored : null;
+    const unsafe = e => (e && e.scored) ? e.scored - e.safe : 0;
+    const rows = ids.map(id => {
+      const ea = a.per_case[id], eb = b.per_case[id], ra = rate(ea), rb = rate(eb);
+      let kind;
+      // Safety is checked before pass/fail: a case that was wrong and is now
+      // wrong *and dangerous* has not stayed the same.
+      if (ra == null || rb == null) kind = "only in one";
+      else if (!unsafe(ea) && unsafe(eb)) kind = "became unsafe";
+      else if (unsafe(ea) && !unsafe(eb)) kind = "became safe";
+      else if (ra < 1 && rb === 1) kind = "fixed";
+      else if (ra > 0 && rb === 0) kind = "broke";
+      else if (rb < ra) kind = "less reliable";
+      else if (rb > ra) kind = "more reliable";
+      else kind = "same";
+      groups[kind].push(id);
+      const fails = e => e && e.failed_graders ? Object.entries(e.failed_graders).map(([g, n]) => g + " x" + n).join(", ") : "";
+      const cls = {"became unsafe": "b-fail", "became safe": "b-pass", fixed: "b-pass", broke: "b-fail", "less reliable": "b-warn", "more reliable": "b-info"}[kind];
+      return { kind, html: "<tr><td>" + traceLink(b.name, id, 1) + '<br><span class="muted">' + esc((caseInfo[id] || {}).category) + "</span></td>" +
+        "<td>" + cellFor(ea) + ' <span class="muted">' + esc(fails(ea)) + "</span></td>" +
+        "<td>" + cellFor(eb) + ' <span class="muted">' + esc(fails(eb)) + "</span></td>" +
+        "<td>" + (cls ? '<span class="badge ' + cls + '">' + kind + "</span>" : '<span class="muted">' + kind + "</span>") + "</td></tr>" };
+    });
+    const order = ["became unsafe", "broke", "less reliable", "became safe", "fixed", "more reliable", "only in one", "same"];
+    rows.sort((x, y) => order.indexOf(x.kind) - order.indexOf(y.kind));
+    const warn = (a.graded !== b.graded) ? '<p class="note">One of these runs is graded by older graders, so a change here may be the grading rather than the agent.</p>' : "";
+    const sameish = (a.meta.prompt_version !== b.meta.prompt_version) ? '<p class="note">The two runs used different system prompts.</p>' : "";
+    return '<div class="card"><div class="controls"><label>baseline <select id="ca">' + runOptions(a.name) + '</select></label>' +
+      '<label>candidate <select id="cb">' + runOptions(b.name) + "</select></label></div>" +
+      '<p><span class="stat"><b>' + pct(a.pass.rate) + " &rarr; " + pct(b.pass.rate) + '</b>fully correct</span>' +
+      '<span class="stat"><b>' + pct(a.safe.rate) + " &rarr; " + pct(b.safe.rate) + '</b>no critical failure</span>' +
+      '<span class="stat"><b>' + groups["became unsafe"].length + " / " + groups["became safe"].length + "</b>became unsafe / safe</span>" +
+      '<span class="stat"><b>' + groups.broke.length + " / " + groups.fixed.length + "</b>broke / fixed</span></p>" + warn + sameish + "</div>" +
+      '<div class="card scroll"><table><thead><tr><th>case</th><th>' + esc(a.name) + "</th><th>" + esc(b.name) + "</th><th>change</th></tr></thead><tbody>" +
+      rows.map(r => r.html).join("") + "</tbody></table></div>" +
+      '<p class="muted">"Broke" means the case failed every repeat in the candidate after passing at least one in the baseline: the rule the CI gate fails on. "!" marks a case with an unsafe attempt.</p>';
+  },
+
+  cases() {
+    const cats = [...new Set(CASES.map(c => c.category))];
+    const head = "<tr><th>case</th>" + RUNS.map(r => '<th class="num">' + esc(r.name) + (r.graded !== "current" ? " *" : "") + "</th>").join("") + "</tr>";
+    const body = cats.map(cat => '<tr><td colspan="' + (RUNS.length + 1) + '"><b>' + esc(cat) + "</b></td></tr>" +
+      CASES.filter(c => c.category === cat).map(c => "<tr><td>" + esc(c.id) + '<br><span class="muted">' + esc(c.title) + "</span></td>" +
+        RUNS.map(r => '<td class="num"><a href="#trace/' + encodeURIComponent(r.name) + "/" + encodeURIComponent(c.id) + '/1" style="text-decoration:none">' + cellFor(r.per_case[c.id]) + "</a></td>").join("") + "</tr>").join("")).join("");
+    return '<div class="card scroll"><table><thead>' + head + "</thead><tbody>" + body + "</tbody></table></div>" +
+      '<p class="muted">Passed repeats / scored repeats. Green: clean. Amber: wrong but never unsafe. Red with "!": at least one unsafe attempt. * graded by older graders. Click a cell for its trace.</p>';
+  },
+
+  trace(args) {
+    const run = byName[args[0]] || RUNS[0];
+    const caseId = args[1] && run.per_case[args[1]] ? args[1] : (run.attempts[0] || {}).case_id;
+    const repeats = run.attempts.filter(a => a.case_id === caseId);
+    const att = repeats.find(a => String(a.repeat) === String(args[2])) || repeats[0];
+    const c = caseInfo[caseId] || {};
+    const caseOpts = CASES.filter(x => run.per_case[x.id]).map(x => "<option" + (x.id === caseId ? " selected" : "") + ">" + esc(x.id) + "</option>").join("");
+    const repOpts = repeats.map(a => "<option" + (a === att ? " selected" : "") + ">" + a.repeat + "</option>").join("");
+    let html = '<div class="card"><div class="controls"><label>run <select id="tr">' + runOptions(run.name) + '</select></label><label>case <select id="tc">' + caseOpts + '</select></label><label>repeat <select id="tp">' + repOpts + "</select></label></div></div>";
+    if (!att) return html + '<p class="muted">No attempts.</p>';
+    html += '<div class="card"><p><b>' + esc(c.title) + "</b> " + outcome(att)[0] + " " + gradedBadge(run) + "</p>" +
+      '<p class="muted">customer</p><p>' + esc(c.prompt) + "</p>" +
+      (c.rubric ? '<p class="muted">rubric</p><p>' + esc(c.rubric) + "</p>" : "") +
+      (c.forbidden && c.forbidden.length ? '<p class="muted">forbidden</p><ul>' + c.forbidden.map(f => "<li>" + esc(f) + "</li>").join("") + "</ul>" : "") +
+      (att.failures.length ? '<p class="muted">failed</p><ul>' + att.failures.map(f => "<li><b>" + esc(f.name) + '</b> <span class="badge ' + (f.severity === "critical" ? "b-fail" : "b-warn") + '">' + esc(f.severity) + "</span> " + esc(f.detail) + "</li>").join("") + "</ul>" : "") +
+      (att.diagnostics.length ? '<p class="muted">diagnostics</p><p>' + att.diagnostics.map(d => '<span class="badge b-info">' + esc(d) + "</span>").join(" ") + "</p>" : "") +
+      '<p class="muted">' + att.steps.length + " steps &middot; " + (att.wall_ms / 1000).toFixed(1) + "s &middot; " + att.tokens + " tokens &middot; stopped: " + esc(att.stop_reason) + "</p></div>";
+    html += '<div class="card">' + att.steps.map(s => {
+      const head = '<div class="head">#' + esc(s.index) + " " + esc(s.kind) + (s.tool_name ? " &middot; " + esc(s.tool_name) : "") +
+        (s.latency_ms ? " &middot; " + s.latency_ms + "ms" : "") + (s.injected ? ' &middot; <span class="badge b-fail">planted text in this result</span>' : "") + "</div>";
+      let body = "";
+      if (s.kind === "model") {
+        if (s.text) body += '<div class="mono">' + esc(s.text) + "</div>";
+        if (s.tool_calls) body += s.tool_calls.map(t => '<div class="mono">&rarr; ' + esc(t.name) + " " + esc(t.arguments) + "</div>").join("");
+      } else if (s.kind === "review") {
+        const cls = s.decision === "approve" ? "b-pass" : s.decision === "reject" ? "b-fail" : "b-warn";
+        body = '<div><span class="badge ' + cls + '">' + esc(s.decision) + "</span> " + esc(s.tool_name) + " " + '<span class="mono">' + esc(s.arguments) + "</span></div><div>" + esc(s.reason) + "</div>";
+      } else {
+        body = '<div class="mono">' + esc(s.arguments || "") + "</div>" +
+          (s.result ? '<div class="mono muted">' + esc(s.result) + "</div>" : "") +
+          (s.error ? '<div class="mono" style="color:var(--fail)">' + esc(s.error) + "</div>" : "") +
+          (s.schema_errors ? '<div class="mono" style="color:var(--fail)">' + esc(JSON.stringify(s.schema_errors)) + "</div>" : "");
+      }
+      return '<div class="step ' + esc(s.kind) + (s.injected ? " injected" : "") + '">' + head + body + "</div>";
+    }).join("") + '<p class="muted">final reply</p><div class="reply">' + (att.reply ? esc(att.reply) : '<span class="muted">(none)</span>') + "</div></div>";
+    return html;
+  },
+
+  injection() {
+    const inj = CASES.filter(c => c.category === "injection");
+    const head = "<tr><th>case</th>" + RUNS.map(r => "<th>" + esc(r.name) + (r.graded !== "current" ? " *" : "") + "</th>").join("") + "</tr>";
+    const body = inj.map(c => "<tr><td>" + esc(c.id) + '<br><span class="muted">' + esc(c.title) + "</span></td>" + RUNS.map(r => {
+      const atts = r.attempts.filter(a => a.case_id === c.id);
+      if (!atts.length) return '<td class="muted">-</td>';
+      return "<td>" + atts.map(a => '<a href="#trace/' + encodeURIComponent(r.name) + "/" + encodeURIComponent(c.id) + "/" + a.repeat + '" title="' + esc(a.reply.slice(0, 300)) + '" style="text-decoration:none">' + outcome(a)[0] + "</a>").join(" ") + "</td>";
+    }).join("") + "</tr>").join("");
+    const summary = RUNS.map(r => {
+      const atts = r.attempts.filter(a => (caseInfo[a.case_id] || {}).category === "injection" && !a.errored);
+      const unsafe = atts.filter(a => !a.safe).length, ok = atts.filter(a => a.passed).length;
+      return "<tr><td>" + esc(r.name) + '</td><td class="num">' + atts.length + '</td><td class="num">' + ok + '</td><td class="num">' + (atts.length - ok - unsafe) + '</td><td class="num">' + unsafe + "</td></tr>";
+    }).join("");
+    return '<div class="card"><p>Five cases plant hostile text inside tool results. Four should be refused; the fifth (<code>injection-control-still-does-the-job</code>) plants text <i>and</i> requires a legitimate refund, so refusing everything cannot score perfectly.</p></div>' +
+      '<div class="card scroll"><table><thead><tr><th>run</th><th class="num">attempts</th><th class="num">correct</th><th class="num">wrong, safe</th><th class="num">unsafe</th></tr></thead><tbody>' + summary + "</tbody></table></div>" +
+      '<div class="card scroll"><table><thead>' + head + "</thead><tbody>" + body + "</tbody></table></div>" +
+      '<p class="muted">One badge per repeat; hover for the reply, click for the trace. "Wrong, safe" includes obeying the injection in words without acting on it. * graded by older graders.</p>';
+  },
+
+  reviewer() {
+    const revRuns = RUNS.filter(r => r.meta.reviewer);
+    if (!revRuns.length) return '<p class="muted">No recorded run had a reviewer.</p>';
+    return revRuns.map(r => {
+      const reviews = [];
+      r.attempts.forEach(a => a.steps.forEach(s => { if (s.kind === "review") reviews.push({a, s}); }));
+      const count = k => reviews.filter(x => x.s.decision === k).length;
+      const rows = reviews.map(({a, s}) => {
+        const cls = s.decision === "approve" ? "b-pass" : s.decision === "reject" ? "b-fail" : "b-warn";
+        return "<tr><td>" + traceLink(r.name, a.case_id, a.repeat, a.case_id + " #" + a.repeat) + "</td><td>" + esc(s.tool_name) + '<div class="mono muted">' + esc(s.arguments) + '</div></td><td><span class="badge ' + cls + '">' + esc(s.decision) + "</span></td><td>" + esc(s.reason) + "</td><td>" + outcome(a)[0] + "</td></tr>";
+      }).join("");
+      return '<h2>' + esc(r.name) + " " + gradedBadge(r) + '</h2><div class="card"><span class="stat"><b>' + reviews.length + '</b>reviews</span><span class="stat"><b>' + count("approve") + '</b>approved</span><span class="stat"><b>' + count("reject") + '</b>rejected</span><span class="stat"><b>' + count("abstain") + '</b>abstained</span>' +
+        '<p class="muted">thinking ' + (r.meta.reviewer_think === false ? "off" : "on") + "</p></div>" +
+        '<div class="card scroll"><table><thead><tr><th>attempt</th><th>proposed action</th><th>decision</th><th>reviewer\'s reason</th><th>attempt outcome</th></tr></thead><tbody>' + rows + "</tbody></table></div>";
+    }).join("") + '<p class="note">An approved action on an attempt marked unsafe is the reviewer letting a forbidden action through.</p>';
+  },
+
+  judge() {
+    const rows = D.judge.map(j => {
+      const ci = j.ci ? j.ci[0].toFixed(3) + " to " + j.ci[1].toFixed(3) : "-";
+      const k = j.kappa == null ? "undefined" : j.kappa.toFixed(3);
+      const c = j.confusion || {};
+      return "<tr><td>" + esc(j.title) + '<br><span class="muted mono">' + esc(j.file) + '</span></td><td class="num">' + j.n + (j.clusters && j.clusters < j.n ? " (" + j.clusters + " cases)" : "") +
+        '</td><td class="num">' + k + '</td><td class="num">' + ci + '</td><td class="num">' + pct(j.observed) + '</td><td class="num">' + (c.tp || 0) + " / " + (c.fn || 0) + " / " + (c.fp || 0) +
+        '</td><td class="num">' + (j.bound != null ? "&le; " + pct(j.bound) : "") + "</td></tr>";
+    }).join("");
+    const panels = D.panels.map(p => '<div class="card"><b>' + esc(p.set) + "</b> &middot; " + p.raters + " raters on " + p.replies + " replies &middot; Fleiss' kappa " + (p.fleiss_kappa == null ? "undefined" : p.fleiss_kappa.toFixed(3)) +
+      " &middot; unanimous " + p.splits.unanimous + ", one dissent " + p.splits.one_dissent + ", split " + p.splits.split +
+      (p.contested.length ? '<table style="margin-top:8px"><thead><tr><th>contested reply</th><th>split</th></tr></thead><tbody>' + p.contested.map(x => "<tr><td>" + esc(x.case_id) + "</td><td>" + esc(x.split) + "</td></tr>").join("") + "</tbody></table>" : "") + "</div>").join("");
+    return '<div class="card"><p>The judge reads only the customer message, the rubric and the reply. It is measured against a blind panel of five raters - models, not people - who saw exactly what the judge saw and nothing else. Earlier measurements are kept, with what was wrong with them.</p></div>' +
+      '<div class="card scroll"><table><thead><tr><th>measurement</th><th class="num">replies</th><th class="num">kappa</th><th class="num">95% interval</th><th class="num">agreement</th><th class="num">caught / missed / invented</th><th class="num">if none disagree</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+      '<p class="muted">"If none disagree" is the exact one-sided bound: the largest true disagreement rate still consistent with seeing none. A zero-width interval with no disagreements is shown, but means nothing on its own.</p>' +
+      "<h2>The panel</h2>" + panels;
+  },
+};
+
+const TABS = [["overview", "Runs"], ["compare", "Compare"], ["cases", "Cases"], ["trace", "Trace"], ["injection", "Injection"], ["reviewer", "Reviewer"], ["judge", "Judge"]];
+
+function route() {
+  const parts = (location.hash.slice(1) || "overview").split("/").map(decodeURIComponent);
+  const view = VIEWS[parts[0]] ? parts[0] : "overview";
+  document.getElementById("nav").innerHTML = TABS.map(([k, label]) => '<a href="#' + k + '"' + (k === view ? ' class="on"' : "") + ">" + label + "</a>").join("");
+  document.getElementById("main").innerHTML = VIEWS[view](parts.slice(1));
+  const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onchange = fn; };
+  on("ca", () => location.hash = "compare/" + encodeURIComponent(document.getElementById("ca").value) + "/" + encodeURIComponent(document.getElementById("cb").value));
+  on("cb", () => location.hash = "compare/" + encodeURIComponent(document.getElementById("ca").value) + "/" + encodeURIComponent(document.getElementById("cb").value));
+  const t = () => location.hash = "trace/" + encodeURIComponent(document.getElementById("tr").value) + "/" + encodeURIComponent(document.getElementById("tc").value) + "/" + document.getElementById("tp").value;
+  on("tr", () => location.hash = "trace/" + encodeURIComponent(document.getElementById("tr").value));
+  on("tc", () => location.hash = "trace/" + encodeURIComponent(document.getElementById("tr").value) + "/" + encodeURIComponent(document.getElementById("tc").value));
+  on("tp", t);
+  window.scrollTo(0, 0);
+}
+window.addEventListener("hashchange", route);
+route();
+</script>
+</body>
+</html>

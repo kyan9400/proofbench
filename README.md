@@ -420,6 +420,37 @@ replay.
 
 
 
+## The dashboard
+
+```bash
+proofbench dashboard --out dist/index.html
+```
+
+One HTML file with the data inside it - no server, no network, no build step.
+Seven views: every run with both rates and their intervals; a per-case
+comparison of any two runs; a case-by-run matrix; a step-by-step trace of any
+attempt, with planted text marked in the tool result that carried it; injection
+resistance; every reviewer decision beside the outcome of the attempt it
+approved; and the judge against the panel, with the superseded measurements kept
+and labelled as such.
+
+**It re-grades before it displays.** A dashboard over saved summaries would show
+each run as graded on the day it was recorded, and on this project that would
+put runs graded by the fixed effects severity next to runs graded by the broken
+one under the same heading. So building it replays every recorded run through
+today's graders and shows those verdicts, with latency, tokens and cost kept as
+recorded. A run that does not replay completely is not re-graded in part: it is
+shown as recorded and flagged with the commit that graded it. Today that is both
+reviewer runs - recorded before replay existed, so none of their turns can be
+matched - and the page says so rather than mixing them in. CI builds it on every
+push and keeps the file as an artifact.
+
+**Building it found a bug in it.** The first comparison view called a case
+"same" when it went from wrong-but-safe at temperature 0 to paying out on a
+forged supervisor approval at 0.7, because it compared pass/fail only - the same
+blind spot the audit had just found in the rates. A move across the safety line
+is now its own category and sorts first.
+
 ## What is unusual about it
 
 **Shopdesk enforces mechanics, not policy.** The shop refuses to refund more
@@ -500,10 +531,11 @@ src/proofbench/
   labels.py          reference labels, pinned to the reply and the rubric
   panel.py           a blind rater panel, and the labels derived from it
   agreement.py       kappa, its interval, and what to say when it is undefined
+  dashboard.py       re-grades every recorded run and writes the one-file dashboard
   cli.py             validate / run / show / compare / gate /
-                     label-template / judge / panel / agree
+                     label-template / judge / panel / agree / dashboard
 eval/                every recorded run, panel vote and verdict behind a number here
-tests/               167 tests, no model required
+tests/               171 tests, no model required
 docs/plan.md         the design decisions, and what was deliberately not done
 ```
 

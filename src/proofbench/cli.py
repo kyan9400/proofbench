@@ -8,6 +8,7 @@
     proofbench judge runs/latest/artifact.json --out runs/latest/judge
     proofbench panel eval/panel/sampled.yaml --labels-out eval/labels/sampled.yaml
     proofbench agree runs/latest/judge/judgements.json --labels eval/labels/sampled.yaml
+    proofbench dashboard --out dist/index.html
 
 `run` writes two files: the full artifact, with every step of every attempt, and
 a summary. The artifact is what you read when you want to know why a case failed;
@@ -379,6 +380,17 @@ def _report_agreement(
     return {"agreement": result, "alignment": alignment.model_dump()}
 
 
+def cmd_dashboard(args: argparse.Namespace) -> int:
+    from .dashboard import build
+
+    data = build(args.eval, args.suite, args.out)
+    for run in data["runs"]:
+        print(run["name"].ljust(20) + ("current " if run["graded"] == "current" else "RECORDED")
+              + "  " + run["grading_note"])
+    print("wrote " + str(args.out))
+    return 0
+
+
 def cmd_agree(args: argparse.Namespace) -> int:
     """Agreement from verdicts and labels that already exist. No model is called.
 
@@ -569,6 +581,13 @@ def build_parser() -> argparse.ArgumentParser:
                            help="seconds per verdict (default 900; a thinking "
                                 "judge can take minutes on a hard reply)")
     judge_cmd.set_defaults(func=cmd_judge)
+
+    dash_cmd = subparsers.add_parser(
+        "dashboard", help="re-grade every recorded run and write a one-file dashboard")
+    dash_cmd.add_argument("--eval", default="eval", help="folder of recorded runs")
+    dash_cmd.add_argument("--suite", default="suites/support")
+    dash_cmd.add_argument("--out", default="dist/index.html")
+    dash_cmd.set_defaults(func=cmd_dashboard)
 
     agree_cmd = subparsers.add_parser(
         "agree", help="measure saved verdicts against labels, without calling a model")
