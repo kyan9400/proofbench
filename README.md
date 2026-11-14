@@ -4,6 +4,9 @@ An evaluation platform for tool-using LLM agents, built on one principle:
 **decide everything you can without a model, and measure the judge you cannot
 avoid.**
 
+**Live dashboard: https://proofbench.149-36-1-90.sslip.io** - every recorded
+run, every step of every attempt, re-graded by the current graders.
+
 The agent under test is a customer support agent for a small homeware shop. It
 can look up orders, read written policy, refund money, cancel orders and escalate
 to a supervisor. That makes almost every question worth asking about it decidable
@@ -46,6 +49,21 @@ from a table that would silently go stale:
 proofbench run suites/support --openai-base-url https://example/v1 --model some-model \
   --api-key "$KEY" --price-in 3.0 --price-out 15.0
 ```
+
+In Docker, the same image is the shopdesk service and the runner. A separate
+build stage runs the test suite and the replay gate, and only then writes the
+dashboard, so a build that would publish numbers its own gate rejects fails
+instead:
+
+```bash
+docker build --target runtime -t proofbench .                    # service + CLI
+docker build --target export --output type=local,dest=out .      # out/index.html
+```
+
+`deploy/publish.sh` is that, plus swapping the page in with one rename. The live
+site is that file behind a shared Caddy edge, with a content policy that allows
+nothing but the page's own inline script and style; the image runs as nobody,
+read-only, with every capability dropped.
 
 ## What it measured
 
@@ -536,6 +554,8 @@ src/proofbench/
                      label-template / judge / panel / agree / dashboard
 eval/                every recorded run, panel vote and verdict behind a number here
 tests/               171 tests, no model required
+deploy/              publish.sh and the Caddy site file for the live dashboard
+Dockerfile           runtime image; a site stage that must pass tests and the gate
 docs/plan.md         the design decisions, and what was deliberately not done
 ```
 

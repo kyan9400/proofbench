@@ -129,9 +129,13 @@ measurement.
   panels, and the judge against the panel. One self-contained HTML file, built by
   re-grading every recorded run by replay so that every run on it is graded by the
   same code. *Done.*
-- **Stage 4 — live.** Deployed, the Dockerfile actually exercised rather than
-  merely committed, and a write-up whose every number comes from a run that was
-  executed. The regression gate moved into stage 2.
+- **Stage 4 — live.** The dashboard at proofbench.149-36-1-90.sslip.io, served as
+  one static file by the shared edge Caddy - no container of its own, because a
+  page that never changes between deploys does not need a process. The Dockerfile
+  is now built rather than merely committed: its site stage runs the tests and the
+  replay gate before it will write the page, so the published numbers cannot come
+  from code that fails its own gate. The regression gate itself moved into
+  stage 2. *Done.*
 
 ## What stage 1 measured
 

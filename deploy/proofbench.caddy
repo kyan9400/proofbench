@@ -1,0 +1,18 @@
+# Proofbench: the evaluation dashboard. One static file, built by
+# `docker build --target export` in ~/proofbench (tests and replay gate must pass
+# first) and copied to ~/edge-sites/proofbench/. No container of its own.
+proofbench.149-36-1-90.sslip.io {
+	import common
+	root * /etc/caddy/sites/proofbench
+	header {
+		# The page is self-contained: inline script and style, nothing fetched.
+		Content-Security-Policy "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		Cache-Control "no-cache"
+	}
+	# Only the page itself; the .caddy files beside this folder are not served.
+	@notindex not path / /index.html
+	respond @notindex 404
+	file_server
+}

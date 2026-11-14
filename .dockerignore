@@ -7,7 +7,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 runs/
-eval/
-tests/
 docs/
+deploy/
 node_modules/
+dist/
+.claude/
+**/__pycache__/
