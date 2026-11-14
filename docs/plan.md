@@ -26,7 +26,7 @@ one. For the case "refund order A-1001 for 49.99":
 | Was the reply decent to read? | **This one needs a judge** |
 
 Only the last row needs judgement, and stage 2 measures how far that judgement
-can be trusted by comparing it against hand labels.
+can be trusted by comparing it against a blind panel of raters.
 
 ## The parts
 
@@ -40,9 +40,15 @@ src/proofbench/
   agent.py             the agent under test, and the reviewer in front of payouts
   graders/             deterministic graders, plus diagnostics
   runner.py            drives a suite, repeats each case, writes an artifact
-  report.py            rates with intervals, flake detection, a CI gate
-  cli.py               validate / run / show / gate
-tests/                 134 tests, no model, no GPU, no network
+  replay.py            serves a recorded run back, and refuses what it never saw
+  report.py            rates with intervals, flake detection, the CI gate
+  judge.py             the one grader that needs a model
+  labels.py            reference labels, pinned to the reply and the rubric
+  panel.py             a blind rater panel, and the labels derived from it
+  agreement.py         kappa, its interval, and what to say when it is undefined
+  cli.py               validate / run / show / compare / gate /
+                       label-template / judge / panel / agree
+tests/                 165 tests, no model, no GPU, no network
 ```
 
 ## Design decisions worth defending
@@ -108,8 +114,9 @@ measurement.
   deterministic graders, diagnostics, the runner, the report, the CLI, 24 cases,
   41 tests at the time it was committed. *Done.*
 - **Stage 2 — the judge, and how much to trust it.** An LLM judge for the free-text
-  rubric; a hand-labelled subset; Cohen's kappa for judge-versus-human agreement
-  reported alongside every judged number. A recorded-replay provider so grader and
+  rubric; reference labels from a blind panel of five raters, with the panel's
+  own agreement measured; Cohen's kappa for judge-versus-panel agreement reported
+  alongside every judged number, with the contested replies both in and out. A recorded-replay provider so grader and
   prompt changes can be re-checked in seconds instead of 17 minutes of GPU, and so
   the gate can run in CI without a model at all. Variance measured where stage 1
   found it — across repeated whole-suite runs, not across repeats inside one run,

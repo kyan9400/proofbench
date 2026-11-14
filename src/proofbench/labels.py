@@ -1,8 +1,9 @@
-"""Hand labels, and keeping them honest.
+"""Reference labels, and keeping them honest.
 
 A judge is only worth reading next to a measurement of how often it agrees with a
-person. That means somebody has to sit down and label replies, and it means the
-labels have to be pinned to the exact replies they were written about.
+reference. That means somebody has to sit down and label replies - a person, or
+the panel in `panel.py` - and it means the labels have to be pinned to the exact
+replies they were written about.
 
 So every label carries a hash of the reply it judged. When a later run produces a
 different reply - a new model, a changed prompt, a changed temperature - the
@@ -17,10 +18,11 @@ though it were signal. Unsure labels are excluded from agreement and counted
 separately, so the reader can see how much of the set the author could not
 decide.
 
-The limitation worth stating plainly: on this project the labeller is the author
-of the suite and of the rubrics. That makes the kappa a measure of agreement
-between the judge and one interested party, not between the judge and an
-independent rater, and it should be read as the weaker of the two claims.
+The limitation worth stating plainly: the first labels on this project were
+written by the author of the suite and of the rubrics, which makes a kappa
+against them agreement with one interested party. They were replaced by a blind
+panel for that reason. The panel's raters are models, so the figure is still not
+agreement with people, and should be read as the weaker of those two claims.
 """
 
 from __future__ import annotations

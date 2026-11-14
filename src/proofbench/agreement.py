@@ -3,7 +3,7 @@
 A judged pass rate on its own is a number with no error bars and no provenance:
 it tells you what one model thought of another model's prose. The only thing that
 makes it worth reading is a measurement of how often that judge agrees with a
-person on the same items.
+reference on the same items: a person, or a panel of raters who never saw it.
 
 Three numbers are reported together, deliberately, because any one of them alone
 misleads:

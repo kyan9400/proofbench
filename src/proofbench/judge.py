@@ -20,7 +20,7 @@ be able to turn a refund of the wrong amount into a pass.
 **Its verdicts are data, not a score.** Judging runs as a separate pass over a
 recorded artifact and writes verdicts keyed by reply. The agreement analysis is a
 third step. So the judge can be re-run, re-prompted or swapped without touching
-the agent, and its output can be compared against hand labels written once.
+the agent, and its output can be compared against reference labels written once.
 
 **An unreadable verdict abstains.** Not a pass. The same rule the reviewer has,
 for the same reason: a parse failure that defaults to "fine" makes a judge look

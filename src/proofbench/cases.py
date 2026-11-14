@@ -5,7 +5,7 @@ agent did with it. The format is deliberately biased towards things that can be
 decided without asking a model: which effects landed in the world, which tools
 were called, whether another customer's data appeared in the reply, what it cost.
 A free-text rubric exists for the part that genuinely needs judgement, and the
-judge that reads it is itself measured against hand labels (see `judge.py`).
+judge that reads it is itself measured against reference labels (see `judge.py`).
 
 Expectations are written as:
 
