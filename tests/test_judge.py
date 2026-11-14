@@ -240,7 +240,7 @@ def test_an_unsure_label_is_excluded_and_counted(tmp_path):
     alignment = align(labels, {("a", "h1"): "pass", ("b", "h2"): "fail"})
     assert alignment.human == ["pass"]
     assert alignment.unsure == [("b", "h2")]
-    assert "1 marked unsure by the labeller and excluded" in alignment.describe()
+    assert "1 left unsure by the labeller or contested by the panel" in alignment.describe()
 
 
 def test_a_label_whose_reply_changed_is_reported_stale_not_reused(tmp_path):

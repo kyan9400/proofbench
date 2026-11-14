@@ -228,12 +228,19 @@ class Alignment(BaseModel):
     # still exists and the judge still has an opinion on it, but the person's
     # answer was to a different question and cannot be set against it.
     rubric_changed: list[tuple[str, str]] = Field(default_factory=list)
+    # The mirror image: the judge's saved verdict was given under an older
+    # wording. The label is current and the reply is unchanged, but the verdict
+    # answers a different question and has to be re-made, not compared.
+    verdict_stale: list[tuple[str, str]] = Field(default_factory=list)
     unlabelled: list[tuple[str, str]] = Field(default_factory=list)
 
     def describe(self) -> str:
         parts = [str(len(self.human)) + " replies labelled and judged"]
         if self.unsure:
-            parts.append(str(len(self.unsure)) + " marked unsure by the labeller and excluded")
+            parts.append(
+                str(len(self.unsure)) + " left unsure by the labeller or contested by "
+                "the panel, and excluded"
+            )
         if self.judge_abstained:
             parts.append(
                 str(len(self.judge_abstained)) + " the judge did not decide (excluded; "
@@ -249,6 +256,11 @@ class Alignment(BaseModel):
                 str(len(self.rubric_changed)) + " labels were written against an older "
                 "wording of their rubric (excluded; they answer a different question)"
             )
+        if self.verdict_stale:
+            parts.append(
+                str(len(self.verdict_stale)) + " verdicts were given under an older "
+                "wording of the rubric (excluded; re-judge them)"
+            )
         if self.unlabelled:
             parts.append(str(len(self.unlabelled)) + " judged replies have no label")
         return "; ".join(parts)
@@ -259,6 +271,7 @@ def align(
     verdicts: dict[tuple[str, str], str],
     judged_replies: set[tuple[str, str]] | None = None,
     rubrics: dict[str, str] | None = None,
+    stale_verdicts: set[tuple[str, str]] | None = None,
 ) -> Alignment:
     """Pair each label with the judge's verdict on the same reply.
 
@@ -270,6 +283,11 @@ def align(
     `rubrics` are the suite's current rubrics by case id. Passing them checks each
     label against the wording it was written under; omitting them skips that check
     entirely, which is only right when the caller has no suite to hand.
+
+    `stale_verdicts` are replies whose saved verdict was given under an older
+    wording of the rubric. They are excluded under their own heading rather than
+    falling through to "the judge did not decide", which would be the same
+    confident misdiagnosis in a new place.
     """
     result = Alignment()
     label_keys = labels.by_key()
@@ -284,6 +302,9 @@ def align(
             continue
         if entry.label == "unsure":
             result.unsure.append(key)
+            continue
+        if stale_verdicts and key in stale_verdicts:
+            result.verdict_stale.append(key)
             continue
         verdict = verdicts.get(key)
         if verdict is None:

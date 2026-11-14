@@ -73,13 +73,37 @@ def _confusion(human: Sequence[Label], judge: Sequence[Label]) -> dict[str, int]
     return {"tp": tp, "fp": fp, "fn": fn, "tn": tn}
 
 
+def _groups(clusters: Sequence[str] | None, n: int) -> list[list[int]]:
+    """Item indices grouped by cluster, in order of first appearance.
+
+    With no clusters every item is its own group, and resampling groups is then
+    exactly resampling items - same draws, same interval as before clusters
+    existed.
+    """
+    if clusters is None:
+        return [[i] for i in range(n)]
+    if len(clusters) != n:
+        raise ValueError("one cluster id is needed per item")
+    grouped: dict[str, list[int]] = {}
+    for index, cluster in enumerate(clusters):
+        grouped.setdefault(cluster, []).append(index)
+    return list(grouped.values())
+
+
 def bootstrap_kappa(
     human: Sequence[Label],
     judge: Sequence[Label],
     draws: int = 5000,
     seed: int = 7,
+    clusters: Sequence[str] | None = None,
 ) -> tuple[float, float, float] | None:
     """A percentile interval for kappa, by resampling the labelled items.
+
+    `clusters` names the case each item came from. When replies from more than
+    one run are pooled, a case contributes several replies that share a prompt
+    and a rubric; they are not independent evidence, and resampling them one by
+    one would narrow the interval by counting the same rubric several times.
+    Whole cases are resampled instead.
 
     Returns (low, high, undefined_share). The third number is not decoration: a
     resample that lands on a single class has no kappa and is dropped, and with
@@ -101,9 +125,11 @@ def bootstrap_kappa(
     if n == 0:
         return None
     rng = np.random.default_rng(seed)
+    groups = _groups(clusters, n)
     values: list[float] = []
     for _ in range(draws):
-        index = rng.integers(0, n, size=n)
+        picked = rng.integers(0, len(groups), size=len(groups))
+        index = [i for g in picked for i in groups[g]]
         resampled_human = [human[i] for i in index]
         resampled_judge = [judge[i] for i in index]
         value = cohen_kappa(resampled_human, resampled_judge)
@@ -138,14 +164,22 @@ def disagreement_upper_bound(n: int, confidence: float = 0.95) -> float | None:
 
 
 def agreement(
-    human: Sequence[Label], judge: Sequence[Label], draws: int = 5000
+    human: Sequence[Label],
+    judge: Sequence[Label],
+    draws: int = 5000,
+    clusters: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """Everything needed to decide whether to believe a judged number."""
+    """Everything needed to decide whether to believe a judged number.
+
+    The first rater is the reference - a person, or a panel - and is called
+    `human` throughout for brevity; nothing here depends on who it was.
+    """
     if len(human) != len(judge):
         raise ValueError("raters disagree on how many items there are")
     n = len(human)
     human = list(human)
     judge = list(judge)
+    groups = _groups(clusters, n)
 
     observed = (sum(1 for a, b in zip(human, judge, strict=True) if a == b) / n) if n else 0.0
     kappa = cohen_kappa(human, judge)
@@ -159,7 +193,12 @@ def agreement(
         "n": n,
         "observed_agreement": observed,
         "kappa": kappa,
-        "kappa_ci95": bootstrap_kappa(human, judge, draws=draws) if n else None,
+        "kappa_ci95": (
+            bootstrap_kappa(human, judge, draws=draws, clusters=clusters) if n else None
+        ),
+        # How many independent things the interval was resampled over. Fewer than
+        # n means several replies shared a case and were kept together.
+        "clusters": len(groups),
         "human_fail_rate": (human.count("fail") / n) if n else 0.0,
         "judge_fail_rate": (judge.count("fail") / n) if n else 0.0,
         "confusion": confusion,
@@ -169,9 +208,12 @@ def agreement(
             i for i, (h, j) in enumerate(zip(human, judge, strict=True)) if h != j
         ],
         # Only meaningful when nothing disagreed, which is exactly the case the
-        # bootstrap cannot describe.
+        # bootstrap cannot describe. Counted over cases rather than replies when
+        # the two differ: the bound assumes independent trials, and two replies to
+        # one case are not two trials of the rubric. Using the larger number
+        # would tighten the bound with evidence that is not there.
         "max_disagreement_rate_if_none_seen": (
-            disagreement_upper_bound(n)
+            disagreement_upper_bound(len(groups))
             if n and not any(h != j for h, j in zip(human, judge, strict=True))
             else None
         ),
@@ -217,11 +259,17 @@ def interpret(result: dict[str, Any]) -> str:
     # the cause is perfect agreement there is a better number to give.
     bound = result.get("max_disagreement_rate_if_none_seen")
     if math.isclose(low, high) and bound is not None:
+        clusters = result.get("clusters", n)
+        counted = (
+            str(n) + " replies" if clusters >= n
+            else str(n) + " replies from " + str(clusters) + " cases"
+        )
         text += (
             " - but nothing disagreed, so the interval is zero-width by "
-            "construction and says nothing. Nought disagreements in " + str(n)
-            + " replies is consistent with a true disagreement rate as high as "
+            "construction and says nothing. Nought disagreements in " + counted
+            + " is consistent with a true disagreement rate as high as "
             + str(round(bound * 100, 1)) + "%"
+            + ("" if clusters >= n else ", counting cases rather than replies")
         )
     elif math.isclose(low, high):
         text += (
@@ -240,7 +288,7 @@ def interpret(result: dict[str, Any]) -> str:
 
 
 def format_agreement(result: dict[str, Any], width: int = 78) -> str:
-    lines = ["=" * width, "judge against hand labels", "=" * width]
+    lines = ["=" * width, "judge against the reference labels", "=" * width]
     lines.append(interpret(result))
     lines.append("-" * width)
     lines.append(
@@ -248,7 +296,7 @@ def format_agreement(result: dict[str, Any], width: int = 78) -> str:
         + "   on " + str(result["n"]) + " replies"
     )
     lines.append(
-        "called it a failure  person " + str(round(result["human_fail_rate"] * 100, 1)) + "%"
+        "called it a failure  labels " + str(round(result["human_fail_rate"] * 100, 1)) + "%"
         + "   judge " + str(round(result["judge_fail_rate"] * 100, 1)) + "%"
     )
     confusion = result["confusion"]
@@ -265,6 +313,11 @@ def format_agreement(result: dict[str, Any], width: int = 78) -> str:
         + "   recall "
         + ("-" if recall is None else str(round(recall * 100, 1)) + "%")
     )
+    if result.get("clusters", result["n"]) < result["n"]:
+        lines.append(
+            "interval resampled by case: " + str(result["n"]) + " replies from "
+            + str(result["clusters"]) + " cases, and replies to one case share a rubric"
+        )
     if result["human_fail_rate"] in (0.0, 1.0) or result["judge_fail_rate"] in (0.0, 1.0):
         lines.append(
             "note: one rater used a single class, so agreement here is not evidence "

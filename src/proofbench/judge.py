@@ -33,7 +33,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .labels import reply_sha
+from .labels import reply_sha, rubric_sha
 from .providers import Provider
 
 JUDGE_SYSTEM_PROMPT = """You assess one reply written by a customer support
@@ -156,6 +156,10 @@ def judge_artifact(
         record = {
             "case_id": entry["case_id"],
             "reply_sha": entry["reply_sha"],
+            # A verdict answers one wording of the rubric, exactly as a label
+            # does. Without this a saved verdict could be set against a label
+            # written for a reworded rubric and the two would look comparable.
+            "rubric_sha": rubric_sha(rubric),
             "attempts_covered": entry["attempts"],
             "reply": entry["reply"],
             **result,
@@ -202,6 +206,24 @@ def judged_reply_keys(judged: dict[str, Any]) -> set[tuple[str, str]]:
     """
     return {
         (r["case_id"], r["reply_sha"]) for r in judged.get("judgements", [])
+    }
+
+
+def stale_verdict_keys(
+    judged: dict[str, Any], rubrics: dict[str, str]
+) -> set[tuple[str, str]]:
+    """Verdicts given under a wording of the rubric the suite no longer carries.
+
+    Saved verdicts are reusable - that is the point of `proofbench agree`, which
+    recomputes agreement without re-judging - and reusable is exactly how a
+    verdict ends up compared with a label that answers a different question. A
+    record with no rubric hash predates the pinning and cannot be attributed to
+    any wording, so it is treated as stale rather than waved through.
+    """
+    return {
+        (r["case_id"], r["reply_sha"])
+        for r in judged.get("judgements", [])
+        if r.get("rubric_sha", "") != rubric_sha(rubrics.get(r["case_id"], ""))
     }
 
 
