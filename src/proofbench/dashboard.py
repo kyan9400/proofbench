@@ -179,7 +179,9 @@ def _judge_entries(eval_dir: Path) -> list[dict[str, Any]]:
             "author labels revised after reading the judge (contaminated)",
         "judge/sharpened/agreement-panel.json": "baseline replies, blind panel",
         "judge/sampled/agreement.json": "held-out replies, blind panel",
-        "judge/pooled-agreement.json": "both sets pooled, blind panel",
+        "judge/pooled-agreement.json": "both sets pooled, contested replies excluded",
+        "judge/pooled-majority-agreement.json":
+            "both sets pooled, contested replies kept by simple majority",
     }
     out = []
     for rel, title in labels.items():
